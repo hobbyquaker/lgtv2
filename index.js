@@ -172,18 +172,29 @@ var LGTV = function (config) {
 
             switch (type)  {
                 case 'request':
+                    // set callback timeout
+                    var timeoutId =
+                        setTimeout(function () {
+                            // remove callback first, in case the response
+                            // comes back while we're processing the error.
+                            delete callbacks[cid];
+
+                            // notify of the error.
+                            cb(new Error('timeout'));
+                        }, config.timeout);
+
                     callbacks[cid] = function (err, res) {
+                        // clear the timeout first, so the callback processing
+                        // time doesn't count against the timeout.
+                        clearTimeout(timeoutId);
+
+                        // call the callback
                         cb(err, res);
+
                         // remove callback after first call
                         delete callbacks[cid];
                     };
 
-                    // set callback timeout
-                    setTimeout(function () {
-                        cb(new Error('timeout'));
-                        // remove callback
-                        delete callbacks[cid];
-                    }, config.timeout);
                     break;
 
                 case 'subscribe':
