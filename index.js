@@ -180,7 +180,7 @@ var LGTV = function (config) {
 
                     // set callback timeout
                     setTimeout(function () {
-                        cb(new Error('timeout'));
+                        if (typeof callbacks[cid] === 'function') callbacks[cid](new Error('timeout'));
                         // remove callback
                         delete callbacks[cid];
                     }, config.timeout);
