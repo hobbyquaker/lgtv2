@@ -43,6 +43,7 @@ var LGTV = function (config) {
     config.url = config.url || 'ws://lgwebostv:3000';
     config.timeout = config.timeout || 15000;
     config.reconnect = typeof config.reconnect === 'undefined' ? 5000 : config.reconnect;
+    config.wsconfig = config.wsconfig || {keepalive: true, keepaliveInterval: 10000, dropConnectionOnKeepaliveTimeout: true, keepaliveGracePeriod: 5000};
     if (typeof config.clientKey === 'undefined') {
         mkdirp(ppath('lgtv2'));
         config.keyFile = (config.keyFile ? config.keyFile : ppath('lgtv2/keyfile-') + config.url.replace(/[a-z]+:\/\/([0-9a-zA-Z-_.]+):[0-9]+/, '$1'));
@@ -58,7 +59,7 @@ var LGTV = function (config) {
         fs.writeFile(config.keyFile, key, cb);
     };
 
-    var client = new WebSocketClient();
+    var client = new WebSocketClient(config.wsconfig);
     var connection = {};
     var isPaired = false;
     var autoReconnect = config.reconnect;
