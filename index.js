@@ -46,7 +46,7 @@ var LGTV = function (config) {
     config.wsconfig = config.wsconfig || {keepalive: true, keepaliveInterval: 10000, dropConnectionOnKeepaliveTimeout: true, keepaliveGracePeriod: 5000};
     if (typeof config.clientKey === 'undefined') {
         mkdirp(ppath('lgtv2'));
-        config.keyFile = (config.keyFile ? config.keyFile : ppath('lgtv2/keyfile-') + config.url.replace(/[a-z]+:\/\/([0-9a-zA-Z-_.]+):[0-9]+/, '$1'));
+        config.keyFile = (config.keyFile ? config.keyFile : ppath('lgtv2/keyfile-') + config.url.replace(/[a-z]+:\/\/([0-9a-zA-Z-_.]+):\d+/, '$1'));
         try {
             that.clientKey = fs.readFileSync(config.keyFile).toString();
         } catch (err) {}
