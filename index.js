@@ -118,6 +118,7 @@ var LGTV = function (config) {
         });
 
         connection.on('message', function (message) {
+            that.emit('message', message);
             var parsedMessage;
             if (message.type === 'utf8') {
                 if (message.utf8Data) {
