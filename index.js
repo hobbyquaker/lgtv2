@@ -10,6 +10,7 @@
 
 const fs = require('fs');
 const os = require('os');
+const dgram = require('dgram');
 const path = require('path');
 const EventEmitter = require('events');
 const WebSocketClient = require('websocket').client;
@@ -27,11 +28,124 @@ const PORT_SECURE = 3001;
 const PORT_INSECURE = 3000;
 
 /**
+ * SHA-256 fingerprints of LG's "LGE SSG Intermediate CA" (issued by "webOS TV Root CA",
+ * valid 2018-03-12 .. 2034-08-15) that signs the certificates of webOS TVs.
+ * Used by `verifyCert: 'lg'`.
+ */
+const LG_ISSUER_FINGERPRINTS = [
+    'E2:BD:64:64:D3:F5:1C:1B:95:B7:69:7D:9D:67:73:C3:3D:94:12:EB:A0:29:9C:56:8C:34:93:7D:3F:E6:8A:A0',
+];
+
+const POWER_STATES = {
+    Active: 'on',
+    'Active Standby': 'standby',
+    Suspend: 'off',
+    'Screen Off': 'screen_off',
+    'Power Off': 'off',
+};
+
+function normalizeFingerprint(fp) {
+    return String(fp)
+        .replace(/^sha256\//i, '')
+        .replace(/[^0-9a-f]/gi, '')
+        .toUpperCase()
+        .replace(/(..)(?=.)/g, '$1:');
+}
+
+/** all certificates the peer presented: leaf first, then issuers */
+function peerChain(tlsSocket) {
+    const chain = [];
+    let cert = tlsSocket.getPeerCertificate(true);
+    const seen = new Set();
+    while (cert && cert.fingerprint256 && !seen.has(cert.fingerprint256)) {
+        seen.add(cert.fingerprint256);
+        chain.push(cert);
+        cert = cert.issuerCertificate;
+    }
+    return chain;
+}
+
+function magicPacket(mac) {
+    const hex = String(mac).replace(/[^0-9a-f]/gi, '');
+    if (hex.length !== 12) {
+        throw new Error('invalid MAC address ' + mac);
+    }
+    const macBuf = Buffer.from(hex, 'hex');
+    const buf = Buffer.alloc(6 + 16 * 6, 0xff);
+    for (let i = 0; i < 16; i++) {
+        macBuf.copy(buf, 6 + i * 6);
+    }
+    return buf;
+}
+
+/**
+ * Send a Wake-on-LAN magic packet. Usable without an instance: LGTV.wake(mac).
+ * options: address (default '255.255.255.255'), port (default 9), count (default 3), interval ms (default 100)
+ */
+function wake(mac, options, cb) {
+    if (typeof options === 'function') {
+        cb = options;
+        options = {};
+    }
+    const opts = Object.assign({address: '255.255.255.255', port: 9, count: 3, interval: 100}, options);
+    const promise = new Promise((resolve, reject) => {
+        let packet;
+        try {
+            packet = magicPacket(mac);
+        } catch (err) {
+            reject(err);
+            return;
+        }
+        const socket = dgram.createSocket(opts.address.includes(':') ? 'udp6' : 'udp4');
+        let sent = 0;
+        const finish = (err) => {
+            socket.close();
+            if (err) {
+                reject(err);
+            } else {
+                resolve();
+            }
+        };
+        socket.once('error', finish);
+        socket.bind(() => {
+            try {
+                socket.setBroadcast(true);
+            } catch {
+                // unicast address or platform without broadcast support
+            }
+            const sendOne = () => {
+                socket.send(packet, 0, packet.length, opts.port, opts.address, (err) => {
+                    if (err) {
+                        finish(err);
+                        return;
+                    }
+                    sent++;
+                    if (sent >= opts.count) {
+                        finish();
+                    } else {
+                        setTimeout(sendOne, opts.interval);
+                    }
+                });
+            };
+            sendOne();
+        });
+    });
+    if (typeof cb === 'function') {
+        promise.then(() => cb(null), cb);
+        return undefined;
+    }
+    return promise;
+}
+
+/**
  * Directory for the client key files. Same locations persist-path used
  * (Windows: %APPDATA%/lgtv2, macOS: ~/Library/Preferences/lgtv2, else ~/.lgtv2),
  * but does not throw when HOME/APPDATA are missing (systemd units without User=).
  */
 function defaultKeyDir() {
+    if (process.env.LGTV2_KEY_DIR) {
+        return process.env.LGTV2_KEY_DIR;
+    }
     if (process.env.APPDATA) {
         return path.join(process.env.APPDATA, 'lgtv2');
     }
@@ -209,6 +323,12 @@ const LGTV = function (config) {
         that.clientKey = config.clientKey;
     }
     this.keyFile = config.keyFile;
+    if (!config.certFile) {
+        config.certFile = config.keyFile
+            ? config.keyFile + '.cert'
+            : path.join(defaultKeyDir(), 'certfile-' + hostnameFromUrl(config.url));
+    }
+    this.certFile = config.certFile;
 
     that.saveKey =
         config.saveKey ||
@@ -319,11 +439,77 @@ const LGTV = function (config) {
         scheduleReconnect();
     });
 
+    /**
+     * verifyCert: false (default) | 'lg' | 'tofu' | fingerprint | [fingerprints]
+     * Returns an Error when the peer certificate chain is not acceptable.
+     */
+    function verifyPeer(conn) {
+        if (!config.verifyCert || !config.secure || !conn.socket || !conn.socket.getPeerCertificate) {
+            return null;
+        }
+        const chain = peerChain(conn.socket);
+        if (chain.length === 0) {
+            return new Error('certificate verification failed: no peer certificate');
+        }
+        const fps = chain.map((c) => normalizeFingerprint(c.fingerprint256));
+        const describe = () => chain.map((c) => (c.subject && c.subject.CN) + ' ' + c.fingerprint256).join(' <- ');
+
+        let expected;
+        if (config.verifyCert === 'lg') {
+            expected = LG_ISSUER_FINGERPRINTS;
+        } else if (config.verifyCert === 'tofu') {
+            let stored;
+            try {
+                stored = fs.readFileSync(config.certFile, 'utf8').trim();
+            } catch {
+                stored = undefined;
+            }
+            if (!stored) {
+                try {
+                    fs.mkdirSync(path.dirname(config.certFile), {recursive: true});
+                    fs.writeFileSync(config.certFile, fps[0] + '\n');
+                } catch (err) {
+                    return new Error('cannot store certificate fingerprint in ' + config.certFile + ': ' + err.message);
+                }
+                that.emit('certificate', {fingerprint: fps[0], stored: true});
+                return null;
+            }
+            expected = [stored];
+        } else {
+            expected = [].concat(config.verifyCert);
+        }
+        expected = expected.map(normalizeFingerprint);
+        if (fps.some((fp) => expected.includes(fp))) {
+            return null;
+        }
+        const err = new Error(
+            'certificate verification failed (' +
+                (config.verifyCert === 'tofu'
+                    ? 'fingerprint changed, delete ' + config.certFile + ' to re-trust'
+                    : 'mode ' + config.verifyCert) +
+                '): ' +
+                describe(),
+        );
+        err.code = 'ECERT';
+        err.chain = fps;
+        return err;
+    }
+
     client.on('connect', (conn) => {
         clearHandshakeTimer();
         lastError = undefined;
         cycleTried = 0;
         cycleErrors = [];
+
+        const certError = verifyPeer(conn);
+        if (certError) {
+            conn.on('error', () => {});
+            conn.close();
+            emitError(certError);
+            scheduleReconnect();
+            return;
+        }
+
         connection = conn;
 
         connection.on('error', (error) => {
@@ -614,6 +800,43 @@ const LGTV = function (config) {
         return promise;
     };
 
+    /**
+     * Wake the TV via Wake-on-LAN. mac defaults to config.mac.
+     */
+    this.wake = function (mac, options, cb) {
+        if (typeof mac === 'function' || (mac && typeof mac === 'object')) {
+            cb = options;
+            options = mac;
+            mac = undefined;
+        }
+        return wake(mac || config.mac, options, cb);
+    };
+
+    /**
+     * Power state via com.webos.service.tvpower/power/getPowerState, mapped to
+     * {state: 'on' | 'standby' | 'screen_off' | 'off' | 'unknown', raw}.
+     * Note: a TV in deep standby does not answer at all - use `connected` and wake().
+     */
+    this.getPowerState = function (cb) {
+        const map = (res) => ({
+            state: POWER_STATES[res && res.state] || 'unknown',
+            raw: res,
+        });
+        if (typeof cb === 'function') {
+            this.request('ssap://com.webos.service.tvpower/power/getPowerState', (err, res) => {
+                cb(err, err ? undefined : map(res));
+            });
+            return undefined;
+        }
+        return this.request('ssap://com.webos.service.tvpower/power/getPowerState').then(map);
+    };
+
+    this.subscribePowerState = function (cb) {
+        return this.subscribe('ssap://com.webos.service.tvpower/power/getPowerState', (err, res) => {
+            cb(err, err ? undefined : {state: POWER_STATES[res && res.state] || 'unknown', raw: res});
+        });
+    };
+
     Object.defineProperty(this, 'connected', {
         enumerable: true,
         get() {
@@ -628,5 +851,9 @@ const LGTV = function (config) {
 };
 
 Object.setPrototypeOf(LGTV.prototype, EventEmitter.prototype);
+
+LGTV.wake = wake;
+LGTV.LG_ISSUER_FINGERPRINTS = LG_ISSUER_FINGERPRINTS.slice();
+LGTV.POWER_STATES = Object.assign({}, POWER_STATES);
 
 module.exports = LGTV;

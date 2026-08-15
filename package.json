@@ -1,10 +1,12 @@
 {
     "name": "lgtv2",
-    "version": "1.7.0",
+    "version": "1.8.0",
     "description": "Simple module to remote control LG WebOS smart TVs",
     "main": "index.js",
+    "types": "index.d.ts",
     "files": [
         "index.js",
+        "index.d.ts",
         "pairing.json",
         "examples"
     ],
@@ -12,7 +14,8 @@
         "node": ">=20"
     },
     "scripts": {
-        "test": "node --test",
+        "test": "node --test && npm run test:types",
+        "test:types": "tsc -p types-test/tsconfig.json",
         "lint": "eslint . && prettier --check .",
         "lintfix": "eslint --fix . && prettier --write ."
     },
@@ -43,9 +46,11 @@
     },
     "devDependencies": {
         "@eslint/js": "^9.0.0",
+        "@types/node": "^20.0.0",
         "eslint": "^9.0.0",
         "globals": "^15.0.0",
         "prettier": "^3.0.0",
+        "typescript": "^5.0.0",
         "ws": "^8.0.0"
     }
 }
