@@ -1,15 +1,13 @@
-'use strict';
+import js from '@eslint/js';
+import globals from 'globals';
 
-const js = require('@eslint/js');
-const globals = require('globals');
-
-module.exports = [
+export default [
     js.configs.recommended,
     {
         files: ['**/*.js'],
         languageOptions: {
             ecmaVersion: 2022,
-            sourceType: 'commonjs',
+            sourceType: 'module',
             globals: {...globals.node},
         },
         rules: {

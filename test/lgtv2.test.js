@@ -1,14 +1,13 @@
-'use strict';
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import net from 'node:net';
+import {createRequire} from 'node:module';
 
-const test = require('node:test');
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const os = require('node:os');
-const path = require('node:path');
-const net = require('node:net');
-
-const LGTV = require('../index.js');
-const {createMockTv, CLIENT_KEY} = require('./mock-tv.js');
+import LGTV from '../index.js';
+import {createMockTv, CLIENT_KEY} from './mock-tv.js';
 
 function tmpKeyFile() {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lgtv2-test-'));
@@ -30,6 +29,15 @@ function connectedTv(tv, extra = {}) {
     lgtv.on('error', () => {});
     return once(lgtv, 'connect').then(() => lgtv);
 }
+
+test('require() still returns the constructor (CommonJS consumers)', () => {
+    const require = createRequire(import.meta.url);
+    const Required = require('../index.js');
+    assert.equal(Required, LGTV);
+    const lgtv = Required({host: 'tv.lan', reconnect: false, clientKey: 'x'}); // without new, as in 1.x
+    assert.ok(lgtv instanceof LGTV);
+    lgtv.disconnect();
+});
 
 test('pairs via prompt, saves the key (creating the directory) and emits connect', async () => {
     const tv = await createMockTv();
@@ -81,11 +89,15 @@ test('pairing rejection emits error, not prompt', async () => {
     await tv.close();
 });
 
-test('request: callback and promise forms', async () => {
+test('request: callback and promise forms; message event carries the raw frame', async () => {
     const tv = await createMockTv();
     const lgtv = await connectedTv(tv);
+    const frames = [];
+    lgtv.on('message', (raw) => frames.push(raw));
     const viaPromise = await lgtv.request('ssap://audio/getVolume');
     assert.equal(viaPromise.volume, 7);
+    assert.equal(typeof frames[0], 'string');
+    assert.equal(JSON.parse(frames[0]).type, 'response');
     const viaCb = await new Promise((resolve, reject) =>
         lgtv.request('ssap://audio/getVolume', (err, res) => (err ? reject(err) : resolve(res))),
     );
@@ -172,12 +184,36 @@ test('reconnects after the TV drops the connection', async () => {
     await once(lgtv, 'connect');
     const closed = once(lgtv, 'close');
     tv.dropAll();
-    await closed;
+    const [info] = await closed;
+    assert.equal(typeof info.code, 'number');
     assert.equal(lgtv.connected, false);
     await once(lgtv, 'connect');
     assert.equal(lgtv.connected, true);
     await lgtv.disconnect();
     assert.equal(lgtv.connected, false);
+    await tv.close();
+});
+
+test('keepalive: a TV that stops answering pings is dropped and reconnected', async () => {
+    const tv = await createMockTv();
+    const lgtv = new LGTV({
+        url: tv.url,
+        keyFile: tmpKeyFile(),
+        reconnect: 50,
+        keepaliveInterval: 60,
+        keepaliveGracePeriod: 60,
+    });
+    lgtv.on('error', () => {});
+    await once(lgtv, 'connect');
+    // the "TV" goes silent without closing: ws would answer pings automatically, so stop it reading
+    const closed = once(lgtv, 'close', 5000);
+    const started = Date.now();
+    tv.pauseAll();
+    await closed;
+    assert.ok(Date.now() - started < 2000, 'dropped by the keepalive, not by a timeout');
+    tv.dropAll(); // release the paused server side so the reconnect gets a fresh socket
+    await once(lgtv, 'connect');
+    await lgtv.disconnect();
     await tv.close();
 });
 
@@ -276,12 +312,14 @@ test('no fallback when url, secure or port are given explicitly', () => {
     c.disconnect();
 });
 
-test('option handling: url building, wsconfig merge, tls defaults, key file name', () => {
+test('option handling: url building, ws options, keepalive, tls defaults, key file name', () => {
     const a = new LGTV({host: '192.168.1.20', reconnect: false, clientKey: 'x', handshakeTimeout: 0});
-    assert.equal(a.wsconfig.tlsOptions.rejectUnauthorized, false);
-    assert.equal(a.wsconfig.keepalive, true);
+    assert.equal(a.wsOptions.rejectUnauthorized, false);
+    assert.equal(a.keepalive.keepalive, true);
+    assert.equal(a.keepalive.keepaliveInterval, 10000);
     a.disconnect();
 
+    // 1.x style wsconfig with tlsOptions is still understood
     const b = new LGTV({
         host: 'fe80::1',
         secure: false,
@@ -289,10 +327,16 @@ test('option handling: url building, wsconfig merge, tls defaults, key file name
         clientKey: 'x',
         wsconfig: {keepaliveInterval: 1234, tlsOptions: {rejectUnauthorized: true}},
     });
-    assert.equal(b.wsconfig.keepaliveInterval, 1234);
-    assert.equal(b.wsconfig.keepalive, true, 'defaults survive a partial wsconfig');
-    assert.equal(b.wsconfig.tlsOptions.rejectUnauthorized, true);
+    assert.equal(b.keepalive.keepaliveInterval, 1234);
+    assert.equal(b.keepalive.keepalive, true, 'defaults survive a partial config');
+    assert.equal(b.wsOptions.rejectUnauthorized, true);
     b.disconnect();
+
+    // 2.x style
+    const b2 = new LGTV({host: 'tv', reconnect: false, clientKey: 'x', keepalive: false, wsOptions: {ca: 'x'}});
+    assert.equal(b2.keepalive.keepalive, false);
+    assert.equal(b2.wsOptions.ca, 'x');
+    b2.disconnect();
 
     const c = new LGTV({url: 'wss://[fe80::1]:3001', reconnect: false, handshakeTimeout: 0});
     assert.match(path.basename(c.keyFile), /^keyfile-fe80__1$/);

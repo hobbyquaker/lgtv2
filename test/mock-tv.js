@@ -1,15 +1,14 @@
-'use strict';
-
 /**
  * Minimal in-process mock of a WebOS TV's SSAP websocket endpoint.
  * Just enough protocol to exercise lgtv2 without a real TV.
  */
 
-const {WebSocketServer} = require('ws');
+import https from 'node:https';
+import {WebSocketServer} from 'ws';
 
-const CLIENT_KEY = 'mock-client-key-0123456789abcdef';
+export const CLIENT_KEY = 'mock-client-key-0123456789abcdef';
 
-function createMockTv(options = {}) {
+export function createMockTv(options = {}) {
     const opts = Object.assign(
         {
             acceptKeys: [CLIENT_KEY],
@@ -24,7 +23,7 @@ function createMockTv(options = {}) {
     let httpsServer = null;
     let wss;
     if (opts.tls) {
-        httpsServer = require('https').createServer(opts.tls);
+        httpsServer = https.createServer(opts.tls);
         wss = new WebSocketServer({server: httpsServer});
         httpsServer.listen(opts.port || 0, '127.0.0.1');
     } else {
@@ -176,6 +175,12 @@ function createMockTv(options = {}) {
                         ws.terminate();
                     }
                 },
+                /** stop reading from the TCP sockets: the "TV" goes silent without closing (no pongs) */
+                pauseAll() {
+                    for (const ws of sockets) {
+                        ws._socket.pause();
+                    }
+                },
                 close() {
                     return new Promise((res) => {
                         for (const ws of sockets) {
@@ -188,5 +193,3 @@ function createMockTv(options = {}) {
         });
     });
 }
-
-module.exports = {createMockTv, CLIENT_KEY};

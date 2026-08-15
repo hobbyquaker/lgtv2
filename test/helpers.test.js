@@ -1,16 +1,14 @@
-'use strict';
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import dgram from 'node:dgram';
+import crypto from 'node:crypto';
+import {execFileSync} from 'node:child_process';
 
-const test = require('node:test');
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const os = require('node:os');
-const path = require('node:path');
-const dgram = require('node:dgram');
-const crypto = require('node:crypto');
-const {execFileSync} = require('node:child_process');
-
-const LGTV = require('../index.js');
-const {createMockTv} = require('./mock-tv.js');
+import LGTV from '../index.js';
+import {createMockTv} from './mock-tv.js';
 
 function tmpDir() {
     return fs.mkdtempSync(path.join(os.tmpdir(), 'lgtv2-helpers-'));
@@ -152,6 +150,7 @@ test('LGTV2_KEY_DIR overrides the key directory', () => {
         lgtv.disconnect();
         assert.equal(lgtv.keyFile, path.join(dir, 'keyfile-tv.lan'));
         assert.equal(lgtv.certFile, path.join(dir, 'keyfile-tv.lan.cert'));
+        assert.equal(lgtv.macFile, path.join(dir, 'keyfile-tv.lan.mac'));
     } finally {
         if (prev === undefined) delete process.env.LGTV2_KEY_DIR;
         else process.env.LGTV2_KEY_DIR = prev;

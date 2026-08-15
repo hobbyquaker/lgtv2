@@ -1,13 +1,11 @@
-'use strict';
-
 // Subscribe to volume/mute and foreground app changes, print them to the console.
 // Usage: node examples/subscribe.js <tv-host>
 
-const LGTV = require('../index.js');
+import LGTV from '../index.js';
 
 const lgtv = new LGTV({
     host: process.argv[2] || 'lgwebostv',
-    // secure: true (wss://host:3001) is the default; pre-2018 TVs need {secure: false}
+    // wss://host:3001 is tried first, ws://host:3000 (pre-2018 TVs) second - nothing to configure
 });
 
 lgtv.on('error', (err) => console.log('error', err.message));
@@ -36,8 +34,9 @@ lgtv.on('connect', async () => {
     try {
         const info = await lgtv.request('ssap://system/getSystemInfo');
         console.log('system', info.modelName);
+        console.log('power', (await lgtv.getPowerState()).state);
     } catch (err) {
-        console.log('getSystemInfo failed', err.message);
+        console.log('request failed', err.message);
     }
 });
 

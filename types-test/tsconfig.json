@@ -2,11 +2,11 @@
     "compilerOptions": {
         "noEmit": true,
         "strict": true,
-        "module": "commonjs",
+        "module": "nodenext",
+        "moduleResolution": "nodenext",
         "target": "es2022",
-        "moduleResolution": "node",
         "types": ["node"],
-        "esModuleInterop": true
+        "skipLibCheck": true
     },
     "files": ["types.ts"]
 }

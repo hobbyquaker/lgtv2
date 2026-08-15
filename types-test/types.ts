@@ -1,7 +1,14 @@
 // Type-level test for index.d.ts - compiled with `tsc --noEmit`, never executed.
-import LGTV = require('../index');
+import LGTV, {wake, LG_ISSUER_FINGERPRINTS} from '../index.js';
 
-const tv = new LGTV({host: '192.168.1.20', verifyCert: 'lg', mac: 'aa:bb:cc:dd:ee:ff', reconnect: 5000});
+const tv = new LGTV({
+    host: '192.168.1.20',
+    verifyCert: 'lg',
+    mac: 'aa:bb:cc:dd:ee:ff',
+    reconnect: 5000,
+    keepaliveInterval: 5000,
+    wsOptions: {ca: 'pem'},
+});
 
 tv.on('connect', async () => {
     const vol = await tv.request<{volume: number}>('ssap://audio/getVolume');
@@ -22,21 +29,26 @@ tv.on('connect', async () => {
     sock.close();
 
     await tv.wake();
-    await tv.wake('aa:bb:cc:dd:ee:ff', {address: '192.168.1.255'});
+    await tv.wake(['aa:bb:cc:dd:ee:ff', '11:22:33:44:55:66'], {address: '192.168.1.255'});
     await tv.disconnect();
 });
 
 tv.on('error', (err: Error) => console.log(err.message));
 tv.on('certificate', (info) => console.log(info.fingerprint, info.stored));
+tv.on('mac', (macs) => console.log(macs.wired, macs.wifi));
+tv.on('message', (raw: string) => console.log(raw.length));
+tv.on('close', (info) => console.log(info.code, info.reason));
 tv.on('connecting', (url: string) => console.log(url));
 
 const urls: string[] = tv.urls;
 const connected: boolean = tv.connected;
-console.log(urls, connected, tv.keyFile, tv.certFile);
+console.log(urls, connected, tv.keyFile, tv.certFile, tv.macFile, tv.mac, tv.macs.wired);
 
 LGTV.wake('aa:bb:cc:dd:ee:ff').then(() => {});
+wake('aa:bb:cc:dd:ee:ff').then(() => {});
 const fps: string[] = LGTV.LG_ISSUER_FINGERPRINTS;
-console.log(fps);
+const fps2: string[] = LG_ISSUER_FINGERPRINTS;
+console.log(fps, fps2);
 
 // @ts-expect-error - secure must be a boolean
 new LGTV({secure: 'yes'});
