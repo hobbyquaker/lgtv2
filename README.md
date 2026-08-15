@@ -2,240 +2,206 @@
 
 [![NPM version](https://badge.fury.io/js/lgtv2.svg)](http://badge.fury.io/js/lgtv2)
 [![npm](https://img.shields.io/npm/dt/lgtv2.svg)]()
-[![dependencies Status](https://david-dm.org/hobbyquaker/lgtv2/status.svg)](https://david-dm.org/hobbyquaker/lgtv2)
-[![Build Status](https://travis-ci.org/hobbyquaker/lgtv2.svg?branch=master)](https://travis-ci.org/hobbyquaker/lgtv2)
-[![XO code style](https://img.shields.io/badge/code_style-XO-5ed9c7.svg)](https://github.com/sindresorhus/xo)
+[![CI](https://github.com/hobbyquaker/lgtv2/actions/workflows/ci.yml/badge.svg)](https://github.com/hobbyquaker/lgtv2/actions/workflows/ci.yml)
 [![License][mit-badge]][mit-url]
 
 Simple Node.js module to remote control LG WebOS smart TVs.
 
 > this is a fork of [LGTV.js](https://github.com/msloth/lgtv.js), heavily modified and rewritten to suite my needs.
 
-With __v1.4.0__ the location and filename of the keyFile is changed, so you likely will have to accept the connection on 
-your TV again after upgrading to 1.4.0.
-
-
 ## Projects using this Module
 
-* [node-red-contrib-lgtv](https://github.com/hobbyquaker/node-red-contrib-lgtv) - [Node-RED](https://nodered.org/) Nodes to control LG webOS Smart TVs.
-* [lgtv2mqtt](https://github.com/hobbyquaker/lgtv2mqtt) - Interface between LG WebOS Smart TVs and MQTT.
-* [homebridge-webos-tv](https://github.com/merdok/homebridge-webos-tv) - [Homebridge](https://github.com/nfarina/homebridge) plugin for LG WebOS TVs.
-* [ioBroker.lgtv](https://github.com/SebastianSchultz/ioBroker.lgtv) - LG WebOS SmartTV adapter for [ioBroker](http://iobroker.net/).
-
+- [node-red-contrib-lgtv](https://github.com/hobbyquaker/node-red-contrib-lgtv) - [Node-RED](https://nodered.org/) Nodes to control LG webOS Smart TVs.
+- [lgtv2mqtt](https://github.com/hobbyquaker/lgtv2mqtt) - Interface between LG WebOS Smart TVs and MQTT.
+- [homebridge-webos-tv](https://github.com/merdok/homebridge-webos-tv) - [Homebridge](https://github.com/nfarina/homebridge) plugin for LG WebOS TVs.
+- [ioBroker.lgtv](https://github.com/SebastianSchultz/ioBroker.lgtv) - LG WebOS SmartTV adapter for [ioBroker](http://iobroker.net/).
 
 ## Installation
 
 `npm install lgtv2`
 
+Requires Node.js >= 20.
+
 ## TV configuration
 
-You need to allow "LG Connect Apps" on your TV - see http://www.lg.com/uk/support/product-help/CT00008334-1437131798537-others
+- The TV must be reachable on your network. Newer TVs (firmware from 2023 on) only accept
+  **secure** websocket connections on port 3001 (`wss://<tv>:3001`); TVs from before 2018
+  only offer `ws://<tv>:3000`. Since lgtv2 1.7 you don't have to care: with just `{host}`
+  the module tries `wss://<tv>:3001` first, falls back to `ws://<tv>:3000` and remembers
+  what worked. Set `secure`/`port` or a full `url` to pin it.
+- On first connection the TV shows a connection request ("LG Connect Apps" / "Mobile TV On"
+  on older models). Accept it; the resulting client key is stored in the key file (see
+  `keyFile` below) and reused on subsequent connections.
+- To turn the TV **on** over the network you need Wake-on-LAN and the TV setting
+  _Settings → General → Mobile TV On / Turn on via Wi-Fi_ (2025+ models:
+  _Support → IP control settings → Wake on LAN_). This module does not send WoL packets (yet).
 
 ## Usage Examples
 
-
 Subscribe to volume and mute changes and output to console:
+
 ```javascript
+const LGTV = require('lgtv2');
 
-var lgtv = require("lgtv2")({
-    url: 'ws://lgwebostv:3000'
-});
+const lgtv = new LGTV({host: '192.168.1.20'});
 
-lgtv.on('error', function (err) {
-    console.log(err);
-});
+lgtv.on('error', (err) => console.log(err));
+lgtv.on('prompt', () => console.log('please accept the connection request on the TV'));
 
-lgtv.on('connect', function () {
+lgtv.on('connect', () => {
     console.log('connected');
-    
-    lgtv.subscribe('ssap://audio/getVolume', function (err, res) {
-        if (res.changed.indexOf('volume') !== -1) console.log('volume changed', res.volume);
-        if (res.changed.indexOf('muted') !== -1) console.log('mute changed', res.muted);
+
+    lgtv.subscribe('ssap://audio/getVolume', (err, res) => {
+        if (err) return console.log(err);
+        if (res.changed.includes('volume')) console.log('volume changed', res.volume);
+        if (res.changed.includes('muted')) console.log('mute changed', res.muted);
     });
-    
 });
 ```
 
-Turn TV off:
+Turn TV off (promise style):
+
 ```javascript
+const LGTV = require('lgtv2');
 
-var lgtv = require("lgtv2")({
-    url: 'ws://lgwebostv:3000'
-});
+const lgtv = new LGTV({host: '192.168.1.20'});
+lgtv.on('error', (err) => console.log(err));
 
-lgtv.on('error', function (err) {
-    console.log(err);
-});
-
-lgtv.on('connect', function () {
-    console.log('connected');
-    lgtv.request('ssap://system/turnOff', function (err, res) {
-        lgtv.disconnect();
-    });
-    
+lgtv.on('connect', async () => {
+    await lgtv.request('ssap://system/turnOff');
+    await lgtv.disconnect();
 });
 ```
+
+Old-style TV (ws://, port 3000):
+
+```javascript
+const lgtv = new LGTV({host: '192.168.1.20', secure: false});
+// or: new LGTV({url: 'ws://192.168.1.20:3000'})
+```
+
+More in [examples/](examples/).
 
 ## API
 
 ### options
 
-* url - websocket url of TV. default: 'ws://lgwebostv:3000'
-* timeout - request timeout in milliseconds, default: 15000
-* reconnect - reconnect interval in milliseconds, default: 5000
-* keyFile - path for key storage. Will be suffixed with hostname/ip of TV. default: Linux: `~/.lgtv2/keyfile-`, macOS: 
-`~/Library/Preferences/lgtv2/keyfile-`
-* saveKey - you can override this with your own function for saving the key
-* clientKey - you have to supply the key here if you're using a custom saveKey method
+- `host` - hostname or IP of the TV. Used to build the URL together with `secure` and `port`.
+- `secure` - `true` → `wss://<host>:3001`, `false` → `ws://<host>:3000`. When omitted (and no `port`/`url` is given) both are tried automatically, `wss` first; the port that worked is used for reconnects, and only if both fail an `error` (`code: 'ECONNFAILED'`) is emitted.
+- `port` - overrides the port chosen by `secure` (disables the automatic fallback).
+- `ports` - `{secure: 3001, insecure: 3000}` - the ports used for `wss`/`ws` (e.g. behind port forwarding); keeps the automatic fallback.
+- `url` - complete websocket URL (e.g. `'wss://192.168.1.20:3001'`). Takes precedence over `host`/`secure`/`port` and disables the automatic fallback.
+- `urls` (property) - the list of URLs that will be tried.
+- `rejectUnauthorized` - verify the TV's TLS certificate. Default `false`: the TV uses a certificate issued by LG's private CA that is not verifiable against public roots.
+- `timeout` - request timeout in milliseconds, default: 15000.
+- `handshakeTimeout` - abort a connection attempt whose websocket handshake does not complete within this many milliseconds (then reconnect), default: 10000. `0` disables.
+- `reconnect` - reconnect interval in milliseconds, default: 5000. `false`/`0` disables auto-reconnect.
+- `keyFile` - path of the file the client key is stored in. Default: Linux `~/.lgtv2/keyfile-<host>`, macOS `~/Library/Preferences/lgtv2/keyfile-<host>`, Windows `%APPDATA%\lgtv2\keyfile-<host>`. The directory is created when the key is first saved.
+- `saveKey` - `function (key, callback)` to override how the key is stored.
+- `clientKey` - supply the key directly (use together with a custom `saveKey`).
+- `wsconfig` - options for the underlying [websocket](https://github.com/theturtle32/WebSocket-Node/blob/master/docs/WebSocketClient.md) client; merged over the defaults (`keepalive: true, keepaliveInterval: 10000, dropConnectionOnKeepaliveTimeout: true, keepaliveGracePeriod: 5000`). `wsconfig.tlsOptions` is merged over `{rejectUnauthorized}`.
+
+### properties
+
+- `connected` - `true` while connected _and_ paired.
+- `keyFile` - resolved key file path.
+- `clientKey` - the current client key.
 
 ### methods
 
-#### request(url [, payload] [, callback])
+#### request(uri [, payload] [, callback])
 
-Payload and callback params are optional. 
+Send a request. With a callback: `callback(err, payload)`. Without a callback a promise is returned.
+Error responses from the TV (`type: 'error'`, e.g. `404 no such service or method`, or
+`returnValue: false`) are delivered as an `Error` with `code: 'ESSAP'` and, if available,
+`errorCode` / `errorText`.
 
-#### subscribe(url, callback)
+#### subscribe(uri [, payload], callback)
 
-#### disconnect()
+Subscribe to a topic. The callback is invoked for every update. Returns the subscription id.
 
-Closes the connection to the TV and stops auto-reconnection.
+For `ssap://audio/getVolume` the payload is normalized across firmware versions: `volume`,
+`muted` and `changed` (array with `'volume'` and/or `'muted'`) are always present.
 
-#### getSocket(url, callback)
+#### unsubscribe(id)
 
-Get specialized socket connection for mouse and button events
+Stop a subscription. Returns `true` if the id was known.
 
-Example:
-```Javascript
-lgtv.getSocket(
-    'ssap://com.webos.service.networkinput/getPointerInputSocket',
-    function(err, sock) {
-        if (!err) {
-            sock.send('click');
-        }
-    }
-);
+#### getSocket(uri [, callback])
+
+Get a specialized socket for mouse and button events. Returns a promise when no callback is given.
+
+```javascript
+const sock = await lgtv.getSocket('ssap://com.webos.service.networkinput/getPointerInputSocket');
+sock.send('button', {name: 'HOME'});
+sock.send('click');
+sock.send('move', {dx: 10, dy: 0});
 ```
+
+Button names include `LEFT RIGHT UP DOWN ENTER BACK EXIT HOME MENU INFO DASH ASTERISK CC
+PLAY PAUSE STOP REWIND FASTFORWARD RED GREEN YELLOW BLUE VOLUMEUP VOLUMEDOWN MUTE
+CHANNELUP CHANNELDOWN 0 … 9`.
+
+#### connect([url])
+
+Usually not needed - the connection is established automatically on construction and
+re-established after `close`.
+
+#### disconnect([callback])
+
+Closes the connection to the TV and stops auto-reconnection. Returns a promise when no callback is given.
 
 ### events
 
-#### prompt
-
-is called when TV prompts for App authorization
-
-#### connect
-
-is called when a connection is established and authorized
-
-#### connecting
-
-is called when trying to connect to the TV
-
-#### close
-
-
-#### error
-
-is called when Websocket connection errors occur. Subsequent equal errors will only be emitted once (So your log isn't 
-flooded with EHOSTUNREACH errors if your TV is off)
-
-
+- `connecting` (url) - trying to connect to the TV
+- `prompt` - the TV shows the pairing prompt; accept it on the TV
+- `connect` - connection established and paired
+- `close` - connection closed
+- `error` (err) - websocket/pairing/TV errors. Subsequent equal connection errors are only emitted once (so your log isn't flooded with `EHOSTUNREACH` while the TV is off)
+- `message` (raw) - every raw websocket message, for debugging
 
 ## Commands
 
+A selection of SSAP endpoints; payloads are passed as the second argument of `request`.
 
-#### api/getServiceList
+| uri                                                      | payload / notes                                                                  |
+| -------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `ssap://api/getServiceList`                              |                                                                                  |
+| `ssap://audio/getStatus`                                 | subscribe: volume, mute, sound output                                            |
+| `ssap://audio/getVolume`                                 | subscribe: `{volume, muted, changed}` (normalized)                               |
+| `ssap://audio/setVolume`                                 | `{volume: 10}`                                                                   |
+| `ssap://audio/volumeUp` / `volumeDown`                   | needed for ARC/eARC soundbars that report `volume: -1`                           |
+| `ssap://audio/setMute`                                   | `{mute: true}`                                                                   |
+| `ssap://com.webos.service.apiadapter/audio/getSoundOutput` / `changeSoundOutput` | `{output: 'external_arc'}` — `tv_speaker`, `external_arc`, `external_optical`, `bt_soundbar`, `headphone`, `lineout` |
+| `ssap://com.webos.service.tvpower/power/getPowerState`   | subscribe: `{state: 'Active' \| 'Active Standby' \| 'Suspend' \| 'Screen Off'}` |
+| `ssap://com.webos.service.tvpower/power/turnOffScreen` / `turnOnScreen` |                                                                   |
+| `ssap://system/turnOff`                                  |                                                                                  |
+| `ssap://system/getSystemInfo`                            | model name etc.                                                                  |
+| `ssap://com.webos.service.update/getCurrentSWInformation` | firmware version                                                                |
+| `ssap://com.webos.applicationManager/getForegroundAppInfo` | subscribe: `{appId}`                                                           |
+| `ssap://com.webos.applicationManager/listLaunchPoints`   | installed apps (id → title)                                                      |
+| `ssap://com.webos.applicationManager/launch`             | `{id: 'netflix'}`, `{id: 'youtube.leanback.v4', params: {contentTarget: 'https://www.youtube.com/watch?v=…'}}` |
+| `ssap://system.launcher/launch`                          | `{id: 'netflix', contentId: '…'}`                                                |
+| `ssap://system.launcher/open`                            | `{target: 'https://example.org'}` — opens the browser                            |
+| `ssap://system.launcher/close` / `getAppState`           | `{id}`                                                                           |
+| `ssap://com.webos.media/getForegroundAppInfo`            | subscribe: play/pause state (newer firmware)                                     |
+| `ssap://media.controls/play` / `pause` / `stop` / `rewind` / `fastForward` |                                                                 |
+| `ssap://media.viewer/close`                              |                                                                                  |
+| `ssap://system.notifications/createToast`                | `{message: 'Hello World!'}` (optional `iconData` base64, `iconExtension`)        |
+| `ssap://system.notifications/createAlert`                | `{message, buttons: [{label, onclick, params}]}`                                 |
+| `ssap://com.webos.service.ime/insertText`                | `{text: 'abc', replace: 0}`                                                      |
+| `ssap://com.webos.service.ime/sendEnterKey` / `deleteCharacters` | `{count: 1}`                                                             |
+| `ssap://tv/getExternalInputList`                         | inputs with `id`, `label`, `connected`                                           |
+| `ssap://tv/switchInput`                                  | `{inputId: 'HDMI_2'}`                                                            |
+| `ssap://tv/getCurrentChannel`                            | subscribe                                                                        |
+| `ssap://tv/getChannelList` / `getChannelProgramInfo`     |                                                                                  |
+| `ssap://tv/openChannel`                                  | `{channelId}` or `{channelNumber: '5'}`                                          |
+| `ssap://tv/channelUp` / `channelDown`                    |                                                                                  |
+| `ssap://com.webos.service.tv.display/set3DOn` / `set3DOff` |                                                                                |
+| `ssap://webapp/closeWebApp`                              |                                                                                  |
 
-#### audio/setMute
-
-Enable/Disable mute
-
-Example: ```lgtv.request('ssap://audio/setMute', {mute: true});```
-
-#### audio/getStatus
-
-#### audio/getVolume
-
-#### audio/setVolume
-
-Example: ```lgtv.request('ssap://audio/setVolume', {volume: 10});```
-
-#### audio/volumeUp
-
-#### audio/volumeDown
-
-#### com.webos.applicationManager/getForegroundAppInfo
-
-#### com.webos.applicationManager/launch
-
-#### com.webos.applicationManager/listLaunchPoints
-
-#### com.webos.service.appstatus/getAppStatus
-
-#### com.webos.service.ime/sendEnterKey
-
-#### com.webos.service.ime/deleteCharacters
-
-#### com.webos.service.tv.display/set3DOn
-
-#### com.webos.service.tv.display/set3DOff
-
-#### com.webos.service.update/getCurrentSWInformation
-
-#### media.controls/play
-
-Example: ```lgtv.request('ssap://media.controls/play');```
-
-#### media.controls/stop
-
-#### media.controls/pause
-
-Example: ```lgtv.request('ssap://media.controls/pause');```
-
-#### media.controls/rewind
-
-#### media.controls/fastForward
-
-#### media.viewer/close
-
-#### system/turnOff
-
-#### system.notifications/createToast
-
-Show a Popup Window.
-
-Example: ```lgtv.request('ssap://system.notifications/createToast', {message: 'Hello World!'});```
-
-#### system.launcher/close
-
-#### system.launcher/getAppState
-
-#### system.launcher/launch
-
-Start an app.
-
-Example: ```lgtv.request('ssap://system.launcher/launch', {id: 'netflix'});```
-
-#### system.launcher/open
-
-#### tv/channelDown
-
-#### tv/channelUp
-
-#### tv/getChannelList
-
-#### tv/getChannelProgramInfo
-
-#### tv/getCurrentChannel
-
-#### tv/getExternalInputList
-
-#### tv/openChannel
-
-#### tv/switchInput
-
-#### webapp/closeWebApp
-
-
+Endpoints not listed here (picture settings, energy saving, …) are not exposed through the
+SSAP permission set of this pairing manifest.
 
 ## License
 
@@ -243,4 +209,3 @@ MIT (c) [Sebastian Raff](https://github.com/hobbyquaker)
 
 [mit-badge]: https://img.shields.io/badge/License-MIT-blue.svg?style=flat
 [mit-url]: LICENSE
-
