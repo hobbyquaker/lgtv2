@@ -339,9 +339,14 @@ passed.
 - [x] `engines >= 20`, `files` whitelist, eslint + prettier, xo/camo-purge
       dropped, Travis/david-dm removed, CHANGELOG.md.
 - [ ] Review README command table once more against a real TV (payload
-      examples are from aiowebostv/bscpylgtv, not all verified).
-- [ ] Release 1.7.0 on npm; bump lgtv2mqtt 1.3.0 and node-red-contrib-lgtv to it.
-- [ ] Delete `lgtv2-patches/` (section 0) — everything in it is superseded.
+      examples are from aiowebostv/bscpylgtv, not all verified). Attempted
+      2026-08-21: TV unreachable (`EHOSTUNREACH` on both ports) — retry when it
+      is on; `node examples/subscribe.js <host>` plus a few `request()` calls
+      is enough.
+- [x] `v1.7.0` tagged locally (not pushed, not published yet).
+- [ ] `git push --tags`, `npm publish`; bump lgtv2mqtt 1.3.0 and
+      node-red-contrib-lgtv to `lgtv2@^1.7.0`.
+- [x] `lgtv2-patches/` deleted (section 0 kept for the record).
 
 ### 1.8.0 — hygiene / helpers
 
