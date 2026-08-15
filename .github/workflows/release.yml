@@ -1,0 +1,54 @@
+name: Release
+
+on:
+    push:
+        tags: ['v*']
+    workflow_dispatch:
+        inputs:
+            tag:
+                description: 'Existing tag to release (e.g. v1.9.0)'
+                required: true
+
+permissions:
+    contents: write
+    id-token: write
+
+jobs:
+    npm:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  ref: ${{ inputs.tag || github.ref }}
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+                  registry-url: https://registry.npmjs.org
+                  cache: npm
+            # trusted publishing (OIDC) needs npm >= 11.5.1; node 22 bundles npm 10
+            - run: npm install -g npm@latest
+            - run: npm ci
+            - run: npm run lint
+            - run: npm test
+            - run: npm publish --provenance --access public
+
+    github-release:
+        runs-on: ubuntu-latest
+        needs: npm
+        steps:
+            # default branch checkout (not the tag) so the notes script is present even when
+            # releasing an older tag via workflow_dispatch; the script reads the CHANGELOG from the tag
+            - uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+            - name: Generate release notes
+              run: node .github/release-notes.js "${{ inputs.tag || github.ref_name }}" > /tmp/notes.md
+            - name: Create GitHub release
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              run: |
+                  TAG="${{ inputs.tag || github.ref_name }}"
+                  gh release create "$TAG" --title "$TAG" --notes-file /tmp/notes.md --verify-tag
