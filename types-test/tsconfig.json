@@ -1,0 +1,12 @@
+{
+    "compilerOptions": {
+        "noEmit": true,
+        "strict": true,
+        "module": "commonjs",
+        "target": "es2022",
+        "moduleResolution": "node",
+        "types": ["node"],
+        "esModuleInterop": true
+    },
+    "files": ["types.ts"]
+}

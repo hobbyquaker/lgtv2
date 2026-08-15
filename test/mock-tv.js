@@ -20,7 +20,17 @@ function createMockTv(options = {}) {
         options,
     );
 
-    const wss = new WebSocketServer({host: '127.0.0.1', port: opts.port || 0});
+    // opts.tls = {key, cert} → serve wss:// via an https server
+    let httpsServer = null;
+    let wss;
+    if (opts.tls) {
+        httpsServer = require('https').createServer(opts.tls);
+        wss = new WebSocketServer({server: httpsServer});
+        httpsServer.listen(opts.port || 0, '127.0.0.1');
+    } else {
+        wss = new WebSocketServer({host: '127.0.0.1', port: opts.port || 0});
+    }
+    let powerState = opts.powerState || 'Active';
     const sockets = new Set();
     const received = [];
     const subscriptions = new Map(); // socket -> Set(cid)
@@ -107,6 +117,18 @@ function createMockTv(options = {}) {
                 case 'ssap://system/turnOff':
                     send(ws, {id, type: 'response', payload: {returnValue: true}});
                     break;
+                case 'ssap://com.webos.service.tvpower/power/getPowerState':
+                    send(ws, {
+                        id,
+                        type: 'response',
+                        payload: {
+                            returnValue: true,
+                            subscribed: type === 'subscribe',
+                            state: powerState,
+                            processing: '',
+                        },
+                    });
+                    break;
                 case 'ssap://test/returnValueFalse':
                     send(ws, {
                         id,
@@ -123,12 +145,15 @@ function createMockTv(options = {}) {
     });
 
     return new Promise((resolve) => {
-        wss.on('listening', () => {
-            const {port} = wss.address();
+        (httpsServer || wss).on('listening', () => {
+            const {port} = (httpsServer || wss).address();
             resolve({
                 port,
-                url: 'ws://127.0.0.1:' + port,
+                url: (httpsServer ? 'wss' : 'ws') + '://127.0.0.1:' + port,
                 received,
+                setPowerState(state) {
+                    powerState = state;
+                },
                 get connections() {
                     return sockets.size;
                 },
@@ -142,7 +167,7 @@ function createMockTv(options = {}) {
                         for (const ws of sockets) {
                             ws.terminate();
                         }
-                        wss.close(() => res());
+                        wss.close(() => (httpsServer ? httpsServer.close(() => res()) : res()));
                     });
                 },
             });
