@@ -47,12 +47,12 @@ const commits = log
 // order matters: the first matching group wins, output order is fixed below
 const GROUPS = [
     {
-        title: 'Documentation',
-        test: /^(docs?|readme|changelog|roadmap)\b|\b(readme|changelog|roadmap|documentation|CLAUDE\.md)\b/i,
-    },
-    {
         title: 'Tests & tooling',
         test: /^(test|tests|ci|chore|build|lint|style|refactor|perf)\b|\b(tests?|eslint|prettier|workflow|github actions|gitattributes|tooling|typings|tsc|release)\b/i,
+    },
+    {
+        title: 'Documentation',
+        test: /^(docs?|readme|changelog|roadmap)\b|\b(readme|changelog|roadmap|documentation|CLAUDE\.md)\b/i,
     },
     {title: 'Features', test: /^(feat|add|new|\d+\.\d+\.\d+)\b|^(add|implement|introduce|support)\s/i},
     {title: 'Fixes', test: /^(fix|bug|hotfix)\b|\b(fix|fixes|fixed|crash|normalize|handle|guard)\b/i},
