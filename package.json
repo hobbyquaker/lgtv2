@@ -1,52 +1,51 @@
 {
-  "name": "lgtv2",
-  "version": "1.6.3",
-  "description": "Simple module to remote control LG WebOS smart TVs",
-  "main": "index.js",
-  "scripts": {
-    "test": "camo-purge ; xo",
-    "lint": "xo",
-    "lintfix": "xo --fix"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/hobbyquaker/lgtv2.git"
-  },
-  "keywords": [
-    "tv",
-    "smarttv",
-    "webos",
-    "remote",
-    "control"
-  ],
-  "author": "Sebastian Raff <hobbyquaker@gmail.com> (https://github.com/hobbyquaker)",
-  "contributors": [
-    "forty2 https://github.com/forty2",
-    "Marcin https://github.com/merdok",
-    "Erik Montnemery https://github.com/emontnemery"
-  ],
-  "license": "MIT",
-  "bugs": {
-    "url": "https://github.com/hobbyquaker/lgtv2/issues"
-  },
-  "homepage": "https://github.com/hobbyquaker/lgtv2",
-  "dependencies": {
-    "mkdirp": "^1.0.4",
-    "persist-path": "^1.0.2",
-    "websocket": "^1.0.32"
-  },
-  "devDependencies": {
-    "camo-purge": "latest",
-    "xo": "latest"
-  },
-  "xo": {
-    "space": 4,
-    "esnext": false,
-    "ignore": [
-      "test.js"
+    "name": "lgtv2",
+    "version": "1.7.0",
+    "description": "Simple module to remote control LG WebOS smart TVs",
+    "main": "index.js",
+    "files": [
+        "index.js",
+        "pairing.json",
+        "examples"
     ],
-    "rules": {
-      "unicorn/regex-shorthand": "warn"
+    "engines": {
+        "node": ">=20"
+    },
+    "scripts": {
+        "test": "node --test",
+        "lint": "eslint . && prettier --check .",
+        "lintfix": "eslint --fix . && prettier --write ."
+    },
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/hobbyquaker/lgtv2.git"
+    },
+    "keywords": [
+        "tv",
+        "smarttv",
+        "webos",
+        "remote",
+        "control"
+    ],
+    "author": "Sebastian Raff <hobbyquaker@gmail.com> (https://github.com/hobbyquaker)",
+    "contributors": [
+        "forty2 https://github.com/forty2",
+        "Marcin https://github.com/merdok",
+        "Erik Montnemery https://github.com/emontnemery"
+    ],
+    "license": "MIT",
+    "bugs": {
+        "url": "https://github.com/hobbyquaker/lgtv2/issues"
+    },
+    "homepage": "https://github.com/hobbyquaker/lgtv2",
+    "dependencies": {
+        "websocket": "^1.0.35"
+    },
+    "devDependencies": {
+        "@eslint/js": "^9.0.0",
+        "eslint": "^9.0.0",
+        "globals": "^15.0.0",
+        "prettier": "^3.0.0",
+        "ws": "^8.0.0"
     }
-  }
 }
