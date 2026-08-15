@@ -1,6 +1,22 @@
 # Changelog
 
-## 1.7.0 (unreleased)
+## 1.8.0 (unreleased)
+
+### Added
+
+- `wake([mac], [options])` / `LGTV.wake(mac, [options])`: Wake-on-LAN magic packets
+  (`address`, `port`, `count`, `interval` options); `mac` option on the constructor.
+- `getPowerState()` / `subscribePowerState()`: `tvpower/power/getPowerState` mapped to
+  `on | standby | screen_off | off | unknown` plus the raw payload.
+- `verifyCert` option for `wss` connections: `'lg'` pins LG's "LGE SSG Intermediate CA"
+  by SHA-256 fingerprint, `'tofu'` pins the first seen certificate in `certFile`
+  (`<keyFile>.cert`), or pass your own fingerprint(s). Failures emit `error` with
+  `code: 'ECERT'` and never register with the TV. New `certificate` event.
+- `LGTV2_KEY_DIR` environment variable overrides the key/cert directory.
+- TypeScript declarations (`index.d.ts`), checked in CI.
+- `LGTV.LG_ISSUER_FINGERPRINTS`, `LGTV.POWER_STATES`.
+
+## 1.7.0 (2026-08-15)
 
 Drop-in release for everyone on 1.6.x; the callback API is unchanged.
 

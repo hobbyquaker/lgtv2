@@ -265,17 +265,19 @@ passed.
   once; a single combined `ECONNFAILED` error is emitted when both fail.
   `secure`/`port`/`url` pin one endpoint. lgtv2mqtt therefore needs no
   `--insecure` flag (T-3 can be simplified to "pass `host` through").
-- **OQ-26 — Key file location in Docker** (= fleet OQ-21): should `lgtv2`
-  honour an env var (`LGTV2_KEY_DIR`) so adapters and Node-RED share one
-  convention? Spec question; the lib can add the env var cheaply.
+- **OQ-26 — Key file location in Docker** (= fleet OQ-21) — **done in 1.8.0**:
+  `LGTV2_KEY_DIR` overrides the key/cert directory. Whether the fleet spec
+  mandates `/data` on top of that remains a spec question.
 - **OQ-27 — PIN pairing** (#44): which models require it and what the
   `setPin` exchange looks like; no reliable reference implementation found
   (aiowebostv does not support it either). Needs a tester with such a TV.
-- **OQ-28 — Power helper scope**: only `wake(mac)`, or also a
-  `getPowerState()` convenience mapping Active / Active Standby / Suspend /
-  Screen Off / Power Off to a small enum? Leaning: both, tiny and optional.
-- **OQ-29 — Typings**: hand-written `index.d.ts` vs. JSDoc +
-  `tsc --declaration`. Leaning: JSDoc-generated, so it cannot drift.
+- **OQ-28 — Power helper scope** — **done in 1.8.0**: both. `wake()` (instance
+  with `mac` option, and static `LGTV.wake`) and `getPowerState()` /
+  `subscribePowerState()` mapping to `on | standby | screen_off | off | unknown`
+  (`LGTV.POWER_STATES`). Real-TV mapping check still pending.
+- **OQ-29 — Typings** — **done in 1.8.0**: hand-written `index.d.ts` after
+  all (the overload-heavy callback/promise API is awkward to express in JSDoc);
+  drift is caught by `types-test/types.ts` compiled in CI.
 - **OQ-30 — Certificate verification instead of `rejectUnauthorized: false`**.
   Measured on `lgtv-wohnzimmer:3001` (2026-08-20): the TV serves a 2-cert
   chain from **LG's private PKI**, not a public CA:
@@ -302,9 +304,13 @@ passed.
      client key, refuse a changed one;
   3. keep `rejectUnauthorized: false` (status quo).
 
-  Leaning: 1 as opt-in (`verifyCert: 'lg'`) plus 2 as opt-in (`verifyCert:
-  'tofu'`) in 1.8, default stays 3 until enough TVs confirm the intermediate
-  is universal; collect fingerprints via an issue template.
+  **Done in 1.8.0**: 1 and 2 as opt-ins (`verifyCert: 'lg' | 'tofu' |
+  fingerprint(s)`), default stays 3. Implementation detail: the chain is
+  inspected after the TLS handshake via `getPeerCertificate(true)` (Node skips
+  `checkServerIdentity` when chain verification already failed), so `'lg'`
+  pins the intermediate's SHA-256 fingerprint instead of shipping a PEM.
+  Still to do: confirm on more TVs that the intermediate is universal;
+  collect fingerprints via an issue template.
 
 ---
 
@@ -350,13 +356,24 @@ passed.
 
 ### 1.8.0 — hygiene / helpers
 
-- [ ] `wake(mac)` + `getPowerState` helper (OQ-28, T-5).
-- [ ] `index.d.ts` (OQ-29).
-- [ ] `verifyCert: 'lg' | 'tofu'` opt-in — ship the LG intermediate, fingerprint
-      pinning (OQ-30).
-- [ ] README command reference with payloads and the button name list
-      (closes #33 #22 #28 #32 #26 #30 #34 #36 #46 #15 with pointers).
-- [ ] `LGTV2_KEY_DIR` env var if OQ-26 says yes.
+- [x] `wake(mac)` (instance + static, `mac` option) and
+      `getPowerState()`/`subscribePowerState()` mapped to
+      `on|standby|screen_off|off|unknown` (OQ-28, T-5).
+- [x] `index.d.ts`, hand-written, checked by `tsc` against `types-test/types.ts`
+      in CI (OQ-29).
+- [x] `verifyCert: 'lg' | 'tofu' | fingerprint(s)` opt-in (OQ-30). `'lg'` pins
+      the LG intermediate by SHA-256 fingerprint (no PEM needed); `'tofu'`
+      stores the leaf fingerprint in `certFile`. Tested with an
+      openssl-generated CA→leaf chain.
+- [x] README command reference with payloads and the button name list
+      (landed in 1.7.0); closing the doc issues (#33 #22 #28 #32 #26 #30 #34
+      #36 #46 #15) with pointers is a GitHub action for release day.
+- [x] `LGTV2_KEY_DIR` env var (OQ-26).
+- [ ] Verify on the real TV: `verifyCert: 'lg'` against `lgtv-wohnzimmer`
+      (the pinned fingerprint was measured on that TV on 2026-08-20, so it
+      must pass), `getPowerState()` mapping, `wake()` with the TV's MAC. TV was
+      unreachable on 2026-08-21.
+- [ ] Release 1.8.0 (tag; push/publish on request).
 
 ### 2.0.0 — modernization
 

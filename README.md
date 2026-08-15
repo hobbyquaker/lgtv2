@@ -34,7 +34,7 @@ Requires Node.js >= 20.
   `keyFile` below) and reused on subsequent connections.
 - To turn the TV **on** over the network you need Wake-on-LAN and the TV setting
   _Settings → General → Mobile TV On / Turn on via Wi-Fi_ (2025+ models:
-  _Support → IP control settings → Wake on LAN_). This module does not send WoL packets (yet).
+  _Support → IP control settings → Wake on LAN_). Then `lgtv.wake()` / `LGTV.wake(mac)` turns it on.
 
 ## Usage Examples
 
@@ -92,11 +92,17 @@ More in [examples/](examples/).
 - `ports` - `{secure: 3001, insecure: 3000}` - the ports used for `wss`/`ws` (e.g. behind port forwarding); keeps the automatic fallback.
 - `url` - complete websocket URL (e.g. `'wss://192.168.1.20:3001'`). Takes precedence over `host`/`secure`/`port` and disables the automatic fallback.
 - `urls` (property) - the list of URLs that will be tried.
-- `rejectUnauthorized` - verify the TV's TLS certificate. Default `false`: the TV uses a certificate issued by LG's private CA that is not verifiable against public roots.
+- `rejectUnauthorized` - verify the TV's TLS certificate against public CAs. Default `false`: the TV uses a certificate issued by LG's private CA that is not verifiable against public roots.
+- `verifyCert` - additional certificate check for `wss` connections, default `false`:
+    - `'lg'` - the presented chain must contain LG's "LGE SSG Intermediate CA" (pinned by SHA-256 fingerprint, see `LGTV.LG_ISSUER_FINGERPRINTS`). Protects against a rogue device answering as your TV.
+    - `'tofu'` - trust on first use: the first certificate seen is pinned in `certFile`; a different one later is rejected (`error` with `code: 'ECERT'`, delete the file to re-trust).
+    - a SHA-256 fingerprint (`'AB:CD:…'` or `'sha256/abcd…'`) or an array of them - accepted if any certificate of the chain matches.
+- `certFile` - where the `tofu` fingerprint is stored, default `<keyFile>.cert`.
+- `mac` - MAC address of the TV for `wake()`.
 - `timeout` - request timeout in milliseconds, default: 15000.
 - `handshakeTimeout` - abort a connection attempt whose websocket handshake does not complete within this many milliseconds (then reconnect), default: 10000. `0` disables.
 - `reconnect` - reconnect interval in milliseconds, default: 5000. `false`/`0` disables auto-reconnect.
-- `keyFile` - path of the file the client key is stored in. Default: Linux `~/.lgtv2/keyfile-<host>`, macOS `~/Library/Preferences/lgtv2/keyfile-<host>`, Windows `%APPDATA%\lgtv2\keyfile-<host>`. The directory is created when the key is first saved.
+- `keyFile` - path of the file the client key is stored in. Default: Linux `~/.lgtv2/keyfile-<host>`, macOS `~/Library/Preferences/lgtv2/keyfile-<host>`, Windows `%APPDATA%\lgtv2\keyfile-<host>`; the environment variable `LGTV2_KEY_DIR` overrides the directory (handy for Docker volumes). The directory is created when the key is first saved.
 - `saveKey` - `function (key, callback)` to override how the key is stored.
 - `clientKey` - supply the key directly (use together with a custom `saveKey`).
 - `wsconfig` - options for the underlying [websocket](https://github.com/theturtle32/WebSocket-Node/blob/master/docs/WebSocketClient.md) client; merged over the defaults (`keepalive: true, keepaliveInterval: 10000, dropConnectionOnKeepaliveTimeout: true, keepaliveGracePeriod: 5000`). `wsconfig.tlsOptions` is merged over `{rejectUnauthorized}`.
@@ -142,6 +148,23 @@ Button names include `LEFT RIGHT UP DOWN ENTER BACK EXIT HOME MENU INFO DASH AST
 PLAY PAUSE STOP REWIND FASTFORWARD RED GREEN YELLOW BLUE VOLUMEUP VOLUMEDOWN MUTE
 CHANNELUP CHANNELDOWN 0 … 9`.
 
+#### getPowerState([callback]) / subscribePowerState(callback)
+
+`com.webos.service.tvpower/power/getPowerState` mapped to `{state, raw}` with `state` one of
+`'on'` (Active), `'standby'` (Active Standby), `'screen_off'` (Screen Off), `'off'` (Suspend / Power Off),
+`'unknown'`. A TV in deep standby does not answer at all - then `connected` is `false` and only
+`wake()` helps.
+
+#### wake([mac] [, options] [, callback]) / LGTV.wake(mac [, options] [, callback])
+
+Sends Wake-on-LAN magic packets (3 by default). `mac` defaults to the `mac` option. `options`:
+`address` (default `'255.255.255.255'`, use your subnet's broadcast address if the TV does not
+react), `port` (9), `count` (3), `interval` (100 ms). Returns a promise when no callback is given.
+
+```javascript
+await LGTV.wake('aa:bb:cc:dd:ee:ff', {address: '192.168.1.255'});
+```
+
 #### connect([url])
 
 Usually not needed - the connection is established automatically on construction and
@@ -159,6 +182,12 @@ Closes the connection to the TV and stops auto-reconnection. Returns a promise w
 - `close` - connection closed
 - `error` (err) - websocket/pairing/TV errors. Subsequent equal connection errors are only emitted once (so your log isn't flooded with `EHOSTUNREACH` while the TV is off)
 - `message` (raw) - every raw websocket message, for debugging
+- `certificate` ({fingerprint, stored}) - `verifyCert: 'tofu'` pinned a certificate for the first time
+
+### TypeScript
+
+Type declarations ship with the package (`index.d.ts`); `import LGTV = require('lgtv2')` or
+`import LGTV from 'lgtv2'` with `esModuleInterop`.
 
 ## Commands
 
