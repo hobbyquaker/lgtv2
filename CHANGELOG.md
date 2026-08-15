@@ -1,6 +1,17 @@
 # Changelog
 
-## 1.8.0 (unreleased)
+## 1.9.0 (unreleased)
+
+### Added
+
+- `wake()` needs no MAC any more: after pairing the TV's wired and Wi-Fi MAC addresses
+  are read from `com.webos.service.connectionmanager/getinfo`, cached in `macFile`
+  (default `<keyFile>.mac`) and used by `wake()` when no `mac` is given (both are sent,
+  the TV reacts on the interface in use). `learnMac: false` disables it, the `mac`
+  option still takes precedence. New `macs`/`mac` properties and a `mac` event.
+- `wake()` / `LGTV.wake()` accept an array of MAC addresses.
+
+## 1.8.0 (2026-08-21)
 
 ### Added
 

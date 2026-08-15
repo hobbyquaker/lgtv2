@@ -339,9 +339,12 @@ passed.
   wired/Wi-Fi MACs are available from
   `com.webos.service.connectionmanager/getinfo` (and `device_id` of
   `getCurrentSWInformation`). Cache them next to the client key so `wake()`
-  works without a `mac` option? Leaning: yes in 1.9 (`macFile`, opt-out), since
-  every dependent needs it; pick the interface matching the current
-  connection's remote address.
+  works without a `mac` option? — **done in 1.9.0**: after pairing,
+  `connectionmanager/getinfo` is read, wired + Wi-Fi MACs are cached in
+  `macFile` (`<keyFile>.mac`) and `wake()` without argument sends to both (the
+  payload carries no per-interface IP on webOS 6, so "match the remote
+  address" is not possible; sending both is harmless). `learnMac: false` opts
+  out, `mac` overrides.
 
 ---
 
@@ -412,7 +415,16 @@ passed.
       back within ~2 s (TV `device_id` in `getCurrentSWInformation` equals the
       wired MAC; `connectionmanager/getinfo` lists wired/wifi/p2p MACs — a
       future `wake()` could learn the MAC automatically, OQ-31).
-- [x] `v1.8.0` tagged locally (push/publish on request).
+- [x] `v1.8.0` released on npm (2026-08-21).
+
+### 1.9.0 — wake() without configuration
+
+- [x] Learn wired/Wi-Fi MACs from `connectionmanager/getinfo` after pairing,
+      cache in `macFile`, `wake()` without argument uses them; `learnMac`
+      opt-out, `mac` override; `mac` event, `macs`/`mac` properties (OQ-31).
+- [x] `wake()` accepts an array of MACs.
+- [ ] Release 1.9.0 (tag locally; push/publish by hand).
+- [ ] lgtv2mqtt: make `--mac` optional on top of `lgtv2@^1.9` (its roadmap T-7 item).
 
 ### 2.0.0 — modernization
 

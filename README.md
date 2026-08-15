@@ -98,7 +98,7 @@ More in [examples/](examples/).
     - `'tofu'` - trust on first use: the first certificate seen is pinned in `certFile`; a different one later is rejected (`error` with `code: 'ECERT'`, delete the file to re-trust).
     - a SHA-256 fingerprint (`'AB:CD:…'` or `'sha256/abcd…'`) or an array of them - accepted if any certificate of the chain matches.
 - `certFile` - where the `tofu` fingerprint is stored, default `<keyFile>.cert`.
-- `mac` - MAC address of the TV for `wake()`.
+- `mac` - MAC address of the TV for `wake()`. Usually not needed: after pairing the module learns the TV's wired and Wi-Fi MACs from `connectionmanager/getinfo` and caches them in `macFile` (default `<keyFile>.mac`), so `wake()` works without configuration from the second start on. `learnMac: false` disables that; an explicit `mac` always wins.
 - `timeout` - request timeout in milliseconds, default: 15000.
 - `handshakeTimeout` - abort a connection attempt whose websocket handshake does not complete within this many milliseconds (then reconnect), default: 10000. `0` disables.
 - `reconnect` - reconnect interval in milliseconds, default: 5000. `false`/`0` disables auto-reconnect.
@@ -160,7 +160,10 @@ again within ~2 s).
 
 #### wake([mac] [, options] [, callback]) / LGTV.wake(mac [, options] [, callback])
 
-Sends Wake-on-LAN magic packets (3 by default). `mac` defaults to the `mac` option. `options`:
+Sends Wake-on-LAN magic packets (3 by default). `mac` can be a string or an array; it defaults to
+the `mac` option, else to every MAC learned from the TV (wired and Wi-Fi - the TV only reacts on the
+interface it uses, so both are sent). `lgtv.mac` / `lgtv.macs` show what is known; without any MAC
+`wake()` rejects with `no MAC address known`. `options`:
 `address` (default `'255.255.255.255'`, use your subnet's broadcast address if the TV does not
 react), `port` (9), `count` (3), `interval` (100 ms). Returns a promise when no callback is given.
 
@@ -186,6 +189,7 @@ Closes the connection to the TV and stops auto-reconnection. Returns a promise w
 - `error` (err) - websocket/pairing/TV errors. Subsequent equal connection errors are only emitted once (so your log isn't flooded with `EHOSTUNREACH` while the TV is off)
 - `message` (raw) - every raw websocket message, for debugging
 - `certificate` ({fingerprint, stored}) - `verifyCert: 'tofu'` pinned a certificate for the first time
+- `mac` ({wired, wifi}) - MAC addresses learned from the TV after pairing
 
 ### TypeScript
 
