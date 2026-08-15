@@ -16,6 +16,14 @@
 - TypeScript declarations (`index.d.ts`), checked in CI.
 - `LGTV.LG_ISSUER_FINGERPRINTS`, `LGTV.POWER_STATES`.
 
+### Fixed
+
+- Volume payload normalization (`volumeStatus` → `volume`/`muted`/`changed`) now also
+  applies when the TV omits the `subscribed` flag on subscription responses, as webOS 6.0
+  does. Verified on an OLED65C17LB (webOS 6.0, fw 03.53.45), which also confirmed
+  `verifyCert: 'lg'`, the `getPowerState` mapping (incl. the new `screen_saver` state)
+  and `wake()` (TV back ~2 s after the magic packet).
+
 ## 1.7.0 (2026-08-15)
 
 Drop-in release for everyone on 1.6.x; the callback API is unchanged.

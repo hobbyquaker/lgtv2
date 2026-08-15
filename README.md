@@ -151,9 +151,12 @@ CHANNELUP CHANNELDOWN 0 … 9`.
 #### getPowerState([callback]) / subscribePowerState(callback)
 
 `com.webos.service.tvpower/power/getPowerState` mapped to `{state, raw}` with `state` one of
-`'on'` (Active), `'standby'` (Active Standby), `'screen_off'` (Screen Off), `'off'` (Suspend / Power Off),
-`'unknown'`. A TV in deep standby does not answer at all - then `connected` is `false` and only
-`wake()` helps.
+`'on'` (Active), `'standby'` (Active Standby), `'screen_off'` (Screen Off), `'screen_saver'` (Screen Saver),
+`'off'` (Suspend / Power Off), `'unknown'`. While powering down the TV sends a few updates with
+`raw.processing` (e.g. `"Request Power Off"`) before `state` changes. A TV in deep standby does not
+answer at all - then `connected` is `false` and only `wake()` helps (measured on a webOS 6.0 OLED:
+websocket closes ~4 s after `turnOff`, port 3001 ~10 s later; after `wake()` the TV is reachable
+again within ~2 s).
 
 #### wake([mac] [, options] [, callback]) / LGTV.wake(mac [, options] [, callback])
 
@@ -212,8 +215,8 @@ A selection of SSAP endpoints; payloads are passed as the second argument of `re
 | `ssap://com.webos.applicationManager/launch`             | `{id: 'netflix'}`, `{id: 'youtube.leanback.v4', params: {contentTarget: 'https://www.youtube.com/watch?v=…'}}` |
 | `ssap://system.launcher/launch`                          | `{id: 'netflix', contentId: '…'}`                                                |
 | `ssap://system.launcher/open`                            | `{target: 'https://example.org'}` — opens the browser                            |
-| `ssap://system.launcher/close` / `getAppState`           | `{id}`                                                                           |
-| `ssap://com.webos.media/getForegroundAppInfo`            | subscribe: play/pause state (newer firmware)                                     |
+| `ssap://system.launcher/close` / `getAppState`           | `{id}`; `getAppState` answers `403 access denied` on webOS 6.0                   |
+| `ssap://com.webos.media/getForegroundAppInfo`            | subscribe: play/pause state — not on every firmware (404 on webOS 6.0)           |
 | `ssap://media.controls/play` / `pause` / `stop` / `rewind` / `fastForward` |                                                                 |
 | `ssap://media.viewer/close`                              |                                                                                  |
 | `ssap://system.notifications/createToast`                | `{message: 'Hello World!'}` (optional `iconData` base64, `iconExtension`)        |
@@ -222,8 +225,8 @@ A selection of SSAP endpoints; payloads are passed as the second argument of `re
 | `ssap://com.webos.service.ime/sendEnterKey` / `deleteCharacters` | `{count: 1}`                                                             |
 | `ssap://tv/getExternalInputList`                         | inputs with `id`, `label`, `connected`                                           |
 | `ssap://tv/switchInput`                                  | `{inputId: 'HDMI_2'}`                                                            |
-| `ssap://tv/getCurrentChannel`                            | subscribe                                                                        |
-| `ssap://tv/getChannelList` / `getChannelProgramInfo`     |                                                                                  |
+| `ssap://tv/getCurrentChannel`                            | subscribe; `500 Application error` while not in live TV                          |
+| `ssap://tv/getChannelList` / `getChannelProgramInfo`     | **warning**: on TVs without tuned channels (e.g. HDMI/ARC-only setups, seen on webOS 6.0) `getChannelList` makes the TV close the websocket; `getChannelProgramInfo` answers 500 |
 | `ssap://tv/openChannel`                                  | `{channelId}` or `{channelNumber: '5'}`                                          |
 | `ssap://tv/channelUp` / `channelDown`                    |                                                                                  |
 | `ssap://com.webos.service.tv.display/set3DOn` / `set3DOff` |                                                                                |

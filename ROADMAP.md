@@ -311,6 +311,13 @@ passed.
   pins the intermediate's SHA-256 fingerprint instead of shipping a PEM.
   Still to do: confirm on more TVs that the intermediate is universal;
   collect fingerprints via an issue template.
+- **OQ-31 — Learn the MAC for `wake()` automatically**: once paired, the
+  wired/Wi-Fi MACs are available from
+  `com.webos.service.connectionmanager/getinfo` (and `device_id` of
+  `getCurrentSWInformation`). Cache them next to the client key so `wake()`
+  works without a `mac` option? Leaning: yes in 1.9 (`macFile`, opt-out), since
+  every dependent needs it; pick the interface matching the current
+  connection's remote address.
 
 ---
 
@@ -344,11 +351,16 @@ passed.
       L-9); GitHub Actions (lint + test on node 20/22/24).
 - [x] `engines >= 20`, `files` whitelist, eslint + prettier, xo/camo-purge
       dropped, Travis/david-dm removed, CHANGELOG.md.
-- [ ] Review README command table once more against a real TV (payload
-      examples are from aiowebostv/bscpylgtv, not all verified). Attempted
-      2026-08-21: TV unreachable (`EHOSTUNREACH` on both ports) — retry when it
-      is on; `node examples/subscribe.js <host>` plus a few `request()` calls
-      is enough.
+- [x] README command table checked against OLED65C17LB (webOS 6.0, fw 03.53.45,
+      2026-08-21): `audio/getStatus`+`getVolume` (`volumeStatus` shape, no
+      `subscribed` flag → normalization fix), `getSoundOutput`, `getPowerState`,
+      `getSystemInfo`, `getCurrentSWInformation`, `getForegroundAppInfo`,
+      `listLaunchPoints` (38 kB), `getExternalInputList`, `connectionmanager/getinfo`
+      (MACs), `getServiceList`, pointer socket over wss — all OK.
+      `media/getForegroundAppInfo` → 404, `getCurrentChannel`/`getChannelProgramInfo`
+      → 500 outside live TV, `system.launcher/getAppState` → 403, and
+      **`tv/getChannelList` makes the TV close the websocket** (tuner-less/ARC
+      setup). All noted in the README table.
 - [x] `v1.7.0` tagged locally (not pushed, not published yet).
 - [ ] `git push --tags`, `npm publish`; bump lgtv2mqtt 1.3.0 and
       node-red-contrib-lgtv to `lgtv2@^1.7.0`.
@@ -369,11 +381,14 @@ passed.
       (landed in 1.7.0); closing the doc issues (#33 #22 #28 #32 #26 #30 #34
       #36 #46 #15) with pointers is a GitHub action for release day.
 - [x] `LGTV2_KEY_DIR` env var (OQ-26).
-- [ ] Verify on the real TV: `verifyCert: 'lg'` against `lgtv-wohnzimmer`
-      (the pinned fingerprint was measured on that TV on 2026-08-20, so it
-      must pass), `getPowerState()` mapping, `wake()` with the TV's MAC. TV was
-      unreachable on 2026-08-21.
-- [ ] Release 1.8.0 (tag; push/publish on request).
+- [x] Verified on the real TV (2026-08-21): `verifyCert: 'lg'` passes;
+      `getPowerState()` → `on`, power-down sequence seen as `Screen Saver`
+      (+`processing` hints) → `Active Standby` → websocket closed after ~4 s,
+      port 3001 closed after ~10 s; `wake()` to the wired MAC brought the TV
+      back within ~2 s (TV `device_id` in `getCurrentSWInformation` equals the
+      wired MAC; `connectionmanager/getinfo` lists wired/wifi/p2p MACs — a
+      future `wake()` could learn the MAC automatically, OQ-31).
+- [x] `v1.8.0` tagged locally (push/publish on request).
 
 ### 2.0.0 — modernization
 
