@@ -129,6 +129,8 @@ test('getPowerState()/subscribePowerState() map the TV states', async () => {
     assert.equal(viaCb.raw.state, 'Active');
     tv.setPowerState('Screen Off');
     assert.equal((await lgtv.getPowerState()).state, 'screen_off');
+    tv.setPowerState('Screen Saver');
+    assert.equal((await lgtv.getPowerState()).state, 'screen_saver');
     tv.setPowerState('Something New');
     assert.equal((await lgtv.getPowerState()).state, 'unknown');
 

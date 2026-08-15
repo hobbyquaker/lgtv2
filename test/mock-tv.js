@@ -45,10 +45,11 @@ function createMockTv(options = {}) {
 
     function volumePayload(subscribed) {
         if (opts.volumeShape === 'new') {
+            // real webOS 6 payload: no `subscribed` field even on subscription responses
             return {
                 returnValue: true,
-                subscribed,
-                volumeStatus: {volume, muteStatus: muted, soundOutput: 'tv_speaker'},
+                callerId: 'secondscreen.client',
+                volumeStatus: {volume, muteStatus: muted, soundOutput: 'tv_speaker', maxVolume: 100},
             };
         }
         return {returnValue: true, subscribed, volume, muted, changed: []};

@@ -41,6 +41,7 @@ const POWER_STATES = {
     'Active Standby': 'standby',
     Suspend: 'off',
     'Screen Off': 'screen_off',
+    'Screen Saver': 'screen_saver',
     'Power Off': 'off',
 };
 
@@ -540,7 +541,8 @@ const LGTV = function (config) {
                     const entry = callbacks[cid];
                     const err = responseToError(parsedMessage);
                     let payload = parsedMessage.payload;
-                    if (entry.type === 'subscribe' && payload && payload.subscribed) {
+                    // some firmware omits `subscribed` on the first response, normalize every subscription payload
+                    if (entry.type === 'subscribe' && payload && typeof payload === 'object') {
                         volumeState[cid] = volumeState[cid] || {};
                         payload = normalizeVolumePayload(payload, volumeState[cid]);
                     }

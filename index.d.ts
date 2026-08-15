@@ -53,7 +53,7 @@ declare namespace LGTV {
         interval?: number;
     }
 
-    type PowerState = 'on' | 'standby' | 'screen_off' | 'off' | 'unknown';
+    type PowerState = 'on' | 'standby' | 'screen_off' | 'screen_saver' | 'off' | 'unknown';
 
     interface PowerStateResult {
         state: PowerState;
