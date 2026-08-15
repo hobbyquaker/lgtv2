@@ -1,9 +1,17 @@
 {
     "name": "lgtv2",
-    "version": "1.9.0",
+    "version": "2.0.0",
     "description": "Simple module to remote control LG WebOS smart TVs",
+    "type": "module",
     "main": "index.js",
     "types": "index.d.ts",
+    "exports": {
+        ".": {
+            "types": "./index.d.ts",
+            "default": "./index.js"
+        },
+        "./package.json": "./package.json"
+    },
     "files": [
         "index.js",
         "index.d.ts",
@@ -11,7 +19,7 @@
         "examples"
     ],
     "engines": {
-        "node": ">=20"
+        "node": "^20.19.0 || ^22.12.0 || >=24"
     },
     "scripts": {
         "test": "node --test && npm run test:types",
@@ -42,15 +50,15 @@
     },
     "homepage": "https://github.com/hobbyquaker/lgtv2",
     "dependencies": {
-        "websocket": "^1.0.35"
+        "ws": "^8.21.0"
     },
     "devDependencies": {
-        "@eslint/js": "^9.0.0",
-        "@types/node": "^20.0.0",
-        "eslint": "^9.0.0",
-        "globals": "^15.0.0",
-        "prettier": "^3.0.0",
-        "typescript": "^5.0.0",
-        "ws": "^8.0.0"
+        "@eslint/js": "^10.0.0",
+        "@types/node": "^24.0.0",
+        "@types/ws": "^8.18.0",
+        "eslint": "^10.0.0",
+        "globals": "^17.0.0",
+        "prettier": "^3.9.0",
+        "typescript": "^5.9.0"
     }
 }

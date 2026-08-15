@@ -6,21 +6,19 @@
  *
  */
 
-'use strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import dgram from 'node:dgram';
+import path from 'node:path';
+import {EventEmitter} from 'node:events';
+import {createRequire} from 'node:module';
+import WebSocket from 'ws';
 
-const fs = require('fs');
-const os = require('os');
-const dgram = require('dgram');
-const path = require('path');
-const EventEmitter = require('events');
-const WebSocketClient = require('websocket').client;
+const pairingTemplate = createRequire(import.meta.url)('./pairing.json');
 
-const pairingTemplate = require('./pairing.json');
-
-const DEFAULT_WSCONFIG = {
+const DEFAULT_KEEPALIVE = {
     keepalive: true,
     keepaliveInterval: 10000,
-    dropConnectionOnKeepaliveTimeout: true,
     keepaliveGracePeriod: 5000,
 };
 
@@ -280,6 +278,7 @@ function normalizeVolumePayload(payload, state) {
     return payload;
 }
 
+/** Socket for pointer/button/keyboard input (getPointerInputSocket etc.) */
 class SpecializedSocket {
     constructor(ws) {
         this.ws = ws;
@@ -309,6 +308,7 @@ const LGTV = function (config) {
     const that = this;
 
     config = Object.assign({}, config);
+
     // Without an explicit url/secure/port, try wss://host:3001 (2018+ firmware) first and
     // fall back to ws://host:3000 (older TVs) automatically; the working one is kept.
     const autoPort = !config.url && typeof config.secure === 'undefined' && !config.port;
@@ -321,6 +321,7 @@ const LGTV = function (config) {
     config.url = candidates[0];
     config.secure = config.url.startsWith('wss://');
     this.urls = candidates.slice();
+
     config.timeout = config.timeout || 15000;
     config.reconnect = typeof config.reconnect === 'undefined' ? 5000 : config.reconnect;
     config.handshakeTimeout = typeof config.handshakeTimeout === 'undefined' ? 10000 : config.handshakeTimeout;
@@ -328,14 +329,33 @@ const LGTV = function (config) {
         config.rejectUnauthorized = false;
     }
 
-    const userWsconfig = Object.assign({}, config.wsconfig);
-    const tlsOptions = Object.assign({rejectUnauthorized: config.rejectUnauthorized}, userWsconfig.tlsOptions);
-    delete userWsconfig.tlsOptions;
-    const wsconfig = Object.assign({}, DEFAULT_WSCONFIG, userWsconfig);
-    // the websocket module mutates the config object it is given, hand out copies
-    const mainWsconfig = () => Object.assign({}, wsconfig, {tlsOptions: Object.assign({}, tlsOptions)});
-    const socketWsconfig = () => ({tlsOptions: Object.assign({}, tlsOptions)});
-    this.wsconfig = config.wsconfig = mainWsconfig();
+    // websocket options: keepalive settings are ours, everything else goes to `ws`
+    // (`wsconfig` and `wsconfig.tlsOptions` from 1.x are still accepted)
+    const legacy = Object.assign({}, config.wsconfig);
+    const legacyTls = Object.assign({}, legacy.tlsOptions);
+    delete legacy.tlsOptions;
+    delete legacy.dropConnectionOnKeepaliveTimeout;
+    const keepalive = Object.assign({}, DEFAULT_KEEPALIVE);
+    for (const key of Object.keys(DEFAULT_KEEPALIVE)) {
+        if (typeof legacy[key] !== 'undefined') {
+            keepalive[key] = legacy[key];
+            delete legacy[key];
+        }
+        if (typeof config[key] !== 'undefined') {
+            keepalive[key] = config[key];
+        }
+    }
+    const wsOptions = Object.assign(
+        {rejectUnauthorized: config.rejectUnauthorized},
+        legacy,
+        legacyTls,
+        config.wsOptions,
+    );
+    const mainWsOptions = () =>
+        Object.assign({}, wsOptions, config.handshakeTimeout ? {handshakeTimeout: config.handshakeTimeout} : {});
+    const socketWsOptions = () => Object.assign({}, wsOptions);
+    this.wsOptions = wsOptions;
+    this.keepalive = keepalive;
 
     if (typeof config.clientKey === 'undefined') {
         if (!config.keyFile) {
@@ -371,10 +391,7 @@ const LGTV = function (config) {
     } catch {
         // nothing learned yet
     }
-    const macCandidates = () => {
-        const list = config.mac ? [config.mac] : [macs.wired, macs.wifi].filter(Boolean);
-        return list;
-    };
+    const macCandidates = () => (config.mac ? [config.mac] : [macs.wired, macs.wifi].filter(Boolean));
     Object.defineProperty(this, 'macs', {
         enumerable: true,
         get() {
@@ -427,14 +444,14 @@ const LGTV = function (config) {
             fs.writeFile(config.keyFile, key, cb);
         };
 
-    const client = new WebSocketClient(mainWsconfig());
-    let connection = {};
+    let ws = null; // current ws instance (connecting or open)
+    let connection = null; // open + usable ws
     let isPaired = false;
     let autoReconnect = config.reconnect;
     let stopped = false;
-    let handshakeTimer = null;
-    let handshakeTimedOut = false;
     let reconnectTimer = null;
+    let keepaliveTimer = null;
+    let keepaliveGraceTimer = null;
 
     const specializedSockets = {};
 
@@ -469,11 +486,43 @@ const LGTV = function (config) {
         }, config.reconnect);
     }
 
-    function clearHandshakeTimer() {
-        if (handshakeTimer) {
-            clearTimeout(handshakeTimer);
-            handshakeTimer = null;
+    function stopKeepalive() {
+        if (keepaliveTimer) {
+            clearInterval(keepaliveTimer);
+            keepaliveTimer = null;
         }
+        if (keepaliveGraceTimer) {
+            clearTimeout(keepaliveGraceTimer);
+            keepaliveGraceTimer = null;
+        }
+    }
+
+    function startKeepalive(socket) {
+        stopKeepalive();
+        if (!keepalive.keepalive) {
+            return;
+        }
+        socket.on('pong', () => {
+            if (keepaliveGraceTimer) {
+                clearTimeout(keepaliveGraceTimer);
+                keepaliveGraceTimer = null;
+            }
+        });
+        keepaliveTimer = setInterval(() => {
+            if (socket.readyState !== WebSocket.OPEN) {
+                return;
+            }
+            socket.ping();
+            if (!keepaliveGraceTimer) {
+                keepaliveGraceTimer = setTimeout(() => {
+                    keepaliveGraceTimer = null;
+                    // no pong in time: the TV went away without closing (standby)
+                    socket.terminate();
+                }, keepalive.keepaliveGracePeriod);
+                keepaliveGraceTimer.unref();
+            }
+        }, keepalive.keepaliveInterval);
+        keepaliveTimer.unref();
     }
 
     function failPendingRequests(reason) {
@@ -490,48 +539,15 @@ const LGTV = function (config) {
         });
     }
 
-    client.on('connectFailed', (error) => {
-        clearHandshakeTimer();
-        if (handshakeTimedOut) {
-            handshakeTimedOut = false;
-            error = new Error('handshake timeout after ' + config.handshakeTimeout + 'ms (' + config.url + ')');
-            error.code = 'ETIMEDOUT';
-        } else if (error && error.code === 'ECONNREFUSED' && !config.secure && !autoPort) {
-            error.message += ' - newer TVs only accept wss://<host>:3001, try {secure: true}';
-        }
-        if (candidates.length > 1) {
-            cycleErrors.push(config.url + ': ' + error.message);
-            cycleTried++;
-            candidateIndex = (candidateIndex + 1) % candidates.length;
-            config.url = candidates[candidateIndex];
-            config.secure = config.url.startsWith('wss://');
-            if (cycleTried < candidates.length) {
-                // try the other port right away, without reporting an error yet
-                setImmediate(() => {
-                    if (!stopped) {
-                        that.connect(config.url);
-                    }
-                });
-                return;
-            }
-            error = new Error('connect failed on all ports (' + cycleErrors.join('; ') + ')');
-            error.code = 'ECONNFAILED';
-            cycleTried = 0;
-            cycleErrors = [];
-        }
-        emitError(error);
-        scheduleReconnect();
-    });
-
     /**
      * verifyCert: false (default) | 'lg' | 'tofu' | fingerprint | [fingerprints]
      * Returns an Error when the peer certificate chain is not acceptable.
      */
-    function verifyPeer(conn) {
-        if (!config.verifyCert || !config.secure || !conn.socket || !conn.socket.getPeerCertificate) {
+    function verifyPeer(tlsSocket) {
+        if (!config.verifyCert || !config.secure || !tlsSocket || !tlsSocket.getPeerCertificate) {
             return null;
         }
-        const chain = peerChain(conn.socket);
+        const chain = peerChain(tlsSocket);
         if (chain.length === 0) {
             return new Error('certificate verification failed: no peer certificate');
         }
@@ -579,69 +595,73 @@ const LGTV = function (config) {
         return err;
     }
 
-    client.on('connect', (conn) => {
-        clearHandshakeTimer();
+    /** a connection attempt failed before the socket was open (refused, timeout, TLS, cert) */
+    function connectFailed(error) {
+        if (error && /handshake has timed out/i.test(error.message)) {
+            error = new Error('handshake timeout after ' + config.handshakeTimeout + 'ms (' + config.url + ')');
+            error.code = 'ETIMEDOUT';
+        } else if (error && error.code === 'ECONNREFUSED' && !config.secure && !autoPort) {
+            error.message += ' - newer TVs only accept wss://<host>:3001, try {secure: true}';
+        }
+        if (candidates.length > 1) {
+            cycleErrors.push(config.url + ': ' + error.message);
+            cycleTried++;
+            candidateIndex = (candidateIndex + 1) % candidates.length;
+            config.url = candidates[candidateIndex];
+            config.secure = config.url.startsWith('wss://');
+            if (cycleTried < candidates.length) {
+                // try the other port right away, without reporting an error yet
+                setImmediate(() => {
+                    if (!stopped) {
+                        that.connect(config.url);
+                    }
+                });
+                return;
+            }
+            error = new Error('connect failed on all ports (' + cycleErrors.join('; ') + ')');
+            error.code = 'ECONNFAILED';
+            cycleTried = 0;
+            cycleErrors = [];
+        }
+        emitError(error);
+        scheduleReconnect();
+    }
+
+    function handleMessage(data) {
+        const text = typeof data === 'string' ? data : data.toString();
+        that.emit('message', text);
+        let parsedMessage;
+        try {
+            parsedMessage = JSON.parse(text);
+        } catch {
+            that.emit('error', new Error('JSON parse error ' + text));
+            return;
+        }
+        if (parsedMessage && callbacks[parsedMessage.id]) {
+            const cid = parsedMessage.id;
+            const entry = callbacks[cid];
+            const err = responseToError(parsedMessage);
+            let payload = parsedMessage.payload;
+            // some firmware omits `subscribed` on the first response, normalize every subscription payload
+            if (entry.type === 'subscribe' && payload && typeof payload === 'object') {
+                volumeState[cid] = volumeState[cid] || {};
+                payload = normalizeVolumePayload(payload, volumeState[cid]);
+            }
+            entry.cb(err, payload);
+        }
+    }
+
+    function openConnection(socket) {
+        connection = socket;
         lastError = undefined;
         cycleTried = 0;
         cycleErrors = [];
-
-        const certError = verifyPeer(conn);
-        if (certError) {
-            conn.on('error', () => {});
-            conn.close();
-            emitError(certError);
-            scheduleReconnect();
-            return;
-        }
-
-        connection = conn;
-
-        connection.on('error', (error) => {
-            that.emit('error', error);
-        });
-
-        connection.on('close', (e) => {
-            connection = {};
-            failPendingRequests('connection closed');
-            that.emit('close', e);
-            that.connection = false;
-            scheduleReconnect();
-        });
-
-        connection.on('message', (message) => {
-            that.emit('message', message);
-            let parsedMessage;
-            if (message.type === 'utf8') {
-                if (message.utf8Data) {
-                    try {
-                        parsedMessage = JSON.parse(message.utf8Data);
-                    } catch {
-                        that.emit('error', new Error('JSON parse error ' + message.utf8Data));
-                    }
-                }
-                if (parsedMessage && callbacks[parsedMessage.id]) {
-                    const cid = parsedMessage.id;
-                    const entry = callbacks[cid];
-                    const err = responseToError(parsedMessage);
-                    let payload = parsedMessage.payload;
-                    // some firmware omits `subscribed` on the first response, normalize every subscription payload
-                    if (entry.type === 'subscribe' && payload && typeof payload === 'object') {
-                        volumeState[cid] = volumeState[cid] || {};
-                        payload = normalizeVolumePayload(payload, volumeState[cid]);
-                    }
-                    entry.cb(err, payload);
-                }
-            } else {
-                that.emit('error', new Error('received non utf8 message ' + message.toString()));
-            }
-        });
-
         isPaired = false;
-
         that.connection = false;
-
+        startKeepalive(socket);
+        socket.on('message', handleMessage);
         that.register();
-    });
+    }
 
     this.register = function () {
         const pairing = Object.assign({}, pairingTemplate);
@@ -704,7 +724,7 @@ const LGTV = function (config) {
         }
         delete callbacks[cid];
         delete volumeState[cid];
-        if (connection.connected) {
+        if (connection && connection.readyState === WebSocket.OPEN) {
             connection.send(JSON.stringify({id: cid, type: 'unsubscribe'}));
         }
         return true;
@@ -716,7 +736,7 @@ const LGTV = function (config) {
             payload = {};
         }
 
-        if (!connection.connected) {
+        if (!connection || connection.readyState !== WebSocket.OPEN) {
             if (typeof cb === 'function') {
                 cb(new Error('not connected'));
             }
@@ -800,29 +820,23 @@ const LGTV = function (config) {
             }
 
             let done = false;
-            const special = new WebSocketClient(socketWsconfig());
-            special
-                .on('connect', (conn) => {
-                    conn.on('error', (error) => {
-                        that.emit('error', error);
-                    }).on('close', () => {
-                        delete specializedSockets[url];
-                    });
-
-                    specializedSockets[url] = new SpecializedSocket(conn);
+            const special = new WebSocket(data.socketPath, socketWsOptions());
+            special.on('open', () => {
+                specializedSockets[url] = new SpecializedSocket(special);
+                done = true;
+                cb(null, specializedSockets[url]);
+            });
+            special.on('error', (error) => {
+                if (!done) {
                     done = true;
-                    cb(null, specializedSockets[url]);
-                })
-                .on('connectFailed', (error) => {
-                    if (!done) {
-                        done = true;
-                        cb(error);
-                    } else {
-                        that.emit('error', error);
-                    }
-                });
-
-            special.connect(data.socketPath);
+                    cb(error);
+                } else {
+                    that.emit('error', error);
+                }
+            });
+            special.on('close', () => {
+                delete specializedSockets[url];
+            });
         });
         return undefined;
     };
@@ -836,23 +850,64 @@ const LGTV = function (config) {
         stopped = false;
         host = host || config.url;
 
-        if (connection.connected && !isPaired) {
-            that.register();
-        } else if (!connection.connected) {
-            that.emit('connecting', host);
-            connection = {};
-            handshakeTimedOut = false;
-            clearHandshakeTimer();
-            if (config.handshakeTimeout) {
-                handshakeTimer = setTimeout(() => {
-                    handshakeTimer = null;
-                    handshakeTimedOut = true;
-                    client.abort();
-                }, config.handshakeTimeout);
-                handshakeTimer.unref();
+        if (connection && connection.readyState === WebSocket.OPEN) {
+            if (!isPaired) {
+                that.register();
             }
-            client.connect(host);
+            return;
         }
+        if (ws && ws.readyState === WebSocket.CONNECTING) {
+            return;
+        }
+
+        that.emit('connecting', host);
+        let opened = false;
+        let rejected = false;
+        let lastSocketError = null;
+        const socket = new WebSocket(host, mainWsOptions());
+        ws = socket;
+
+        socket.on('upgrade', (response) => {
+            const certError = verifyPeer(response.socket);
+            if (certError) {
+                rejected = true;
+                socket.terminate();
+                emitError(certError);
+                scheduleReconnect();
+            }
+        });
+        socket.on('open', () => {
+            if (rejected) {
+                return;
+            }
+            opened = true;
+            openConnection(socket);
+        });
+        socket.on('error', (error) => {
+            if (!opened) {
+                lastSocketError = error;
+            } else {
+                that.emit('error', error);
+            }
+        });
+        socket.on('close', (code, reason) => {
+            if (ws === socket) {
+                ws = null;
+            }
+            if (rejected) {
+                return;
+            }
+            if (!opened) {
+                connectFailed(lastSocketError || new Error('connection closed during handshake (' + code + ')'));
+                return;
+            }
+            stopKeepalive();
+            connection = null;
+            failPendingRequests('connection closed');
+            that.emit('close', {code, reason: reason ? reason.toString() : ''});
+            that.connection = false;
+            scheduleReconnect();
+        });
     };
 
     this.disconnect = function (cb) {
@@ -866,17 +921,20 @@ const LGTV = function (config) {
             clearTimeout(reconnectTimer);
             reconnectTimer = null;
         }
-        clearHandshakeTimer();
-        client.abort();
+        stopKeepalive();
 
         Object.keys(specializedSockets).forEach((k) => {
             specializedSockets[k].close();
         });
 
         const promise = new Promise((resolve) => {
-            if (connection && connection.connected) {
-                connection.once('close', () => resolve());
-                connection.close();
+            const socket = ws;
+            if (socket && socket.readyState === WebSocket.CONNECTING) {
+                socket.once('close', () => resolve());
+                socket.terminate();
+            } else if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.once('close', () => resolve());
+                socket.close();
             } else {
                 resolve();
             }
@@ -889,10 +947,10 @@ const LGTV = function (config) {
     };
 
     /**
-     * Wake the TV via Wake-on-LAN. mac defaults to config.mac.
+     * Wake the TV via Wake-on-LAN. mac defaults to config.mac, else to the MACs learned from the TV.
      */
     this.wake = function (mac, options, cb) {
-        if (typeof mac === 'function' || (mac && typeof mac === 'object')) {
+        if (typeof mac === 'function' || (mac && typeof mac === 'object' && !Array.isArray(mac))) {
             cb = options;
             options = mac;
             mac = undefined;
@@ -902,7 +960,7 @@ const LGTV = function (config) {
 
     /**
      * Power state via com.webos.service.tvpower/power/getPowerState, mapped to
-     * {state: 'on' | 'standby' | 'screen_off' | 'off' | 'unknown', raw}.
+     * {state: 'on' | 'standby' | 'screen_off' | 'screen_saver' | 'off' | 'unknown', raw}.
      * Note: a TV in deep standby does not answer at all - use `connected` and wake().
      */
     this.getPowerState = function (cb) {
@@ -928,7 +986,7 @@ const LGTV = function (config) {
     Object.defineProperty(this, 'connected', {
         enumerable: true,
         get() {
-            return Boolean(connection.connected && isPaired);
+            return Boolean(connection && connection.readyState === WebSocket.OPEN && isPaired);
         },
     });
 
@@ -944,4 +1002,6 @@ LGTV.wake = wake;
 LGTV.LG_ISSUER_FINGERPRINTS = LG_ISSUER_FINGERPRINTS.slice();
 LGTV.POWER_STATES = Object.assign({}, POWER_STATES);
 
-module.exports = LGTV;
+export default LGTV;
+// `require('lgtv2')` keeps returning the constructor itself (node >= 20.19 / 22.12 require(esm))
+export {LGTV, wake, LG_ISSUER_FINGERPRINTS, POWER_STATES, LGTV as 'module.exports'};

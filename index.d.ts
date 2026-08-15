@@ -1,5 +1,5 @@
-/// <reference types="node" />
 import {EventEmitter} from 'node:events';
+import type {ClientOptions} from 'ws';
 
 declare namespace LGTV {
     type Callback<T = any> = (err: Error | null | undefined, result?: T) => void;
@@ -18,7 +18,7 @@ declare namespace LGTV {
         /** verify the TV's TLS certificate against public CAs, default false */
         rejectUnauthorized?: boolean;
         /**
-         * additional certificate check: `'lg'` (chain must contain LG's intermediate CA),
+         * additional certificate check: `'lg'` (chain must contain LG's TV certificate or intermediate CA),
          * `'tofu'` (pin the first seen certificate in `certFile`), or one/several SHA-256 fingerprints
          */
         verifyCert?: false | 'lg' | 'tofu' | string | string[];
@@ -30,6 +30,12 @@ declare namespace LGTV {
         handshakeTimeout?: number;
         /** reconnect interval in ms, default 5000; false/0 disables */
         reconnect?: number | false;
+        /** ping the TV regularly and drop the connection when it stops answering, default true */
+        keepalive?: boolean;
+        /** ms between pings, default 10000 */
+        keepaliveInterval?: number;
+        /** ms to wait for the pong, default 5000 */
+        keepaliveGracePeriod?: number;
         /** client key file, default `~/.lgtv2/keyfile-<host>` (or $LGTV2_KEY_DIR) */
         keyFile?: string;
         /** custom key storage */
@@ -42,7 +48,9 @@ declare namespace LGTV {
         learnMac?: boolean;
         /** file for the learned MACs, default `<keyFile>.mac` */
         macFile?: string;
-        /** options for the underlying `websocket` client, merged over the defaults */
+        /** extra options for the underlying `ws` client (e.g. `ca`, `cert`, `headers`) */
+        wsOptions?: ClientOptions;
+        /** @deprecated 1.x name: keepalive settings and `tlsOptions` are still understood */
         wsconfig?: Record<string, any>;
     }
 
@@ -80,9 +88,10 @@ declare namespace LGTV {
         connecting: (url: string) => void;
         prompt: () => void;
         connect: () => void;
-        close: (event?: any) => void;
+        close: (info: {code: number; reason: string}) => void;
         error: (err: Error) => void;
-        message: (raw: any) => void;
+        /** every raw frame received from the TV, as text */
+        message: (raw: string) => void;
         certificate: (info: {fingerprint: string; stored: boolean}) => void;
         mac: (macs: {wired?: string; wifi?: string}) => void;
     }
@@ -103,7 +112,8 @@ declare class LGTV extends EventEmitter {
     /** MAC `wake()` will use first: the `mac` option, else the learned wired, else Wi-Fi MAC */
     readonly mac: string | undefined;
     clientKey: string | undefined;
-    wsconfig: Record<string, any>;
+    readonly wsOptions: ClientOptions;
+    readonly keepalive: {keepalive: boolean; keepaliveInterval: number; keepaliveGracePeriod: number};
 
     request<T = any>(uri: string, payload?: Record<string, any>): Promise<T>;
     request<T = any>(uri: string, cb: LGTV.Callback<T>): string | undefined;
@@ -148,4 +158,11 @@ declare class LGTV extends EventEmitter {
     static readonly POWER_STATES: Record<string, LGTV.PowerState>;
 }
 
-export = LGTV;
+/** `LGTV.wake` as a named export */
+declare function wake(mac: string | string[], options?: LGTV.WakeOptions): Promise<void>;
+declare function wake(mac: string | string[], options: LGTV.WakeOptions, cb: (err?: Error | null) => void): void;
+declare const LG_ISSUER_FINGERPRINTS: string[];
+declare const POWER_STATES: Record<string, LGTV.PowerState>;
+
+export default LGTV;
+export {LGTV, wake, LG_ISSUER_FINGERPRINTS, POWER_STATES};
