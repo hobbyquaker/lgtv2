@@ -36,8 +36,12 @@ declare namespace LGTV {
         saveKey?: (key: string, cb: (err?: Error | null) => void) => void;
         /** supply the client key directly */
         clientKey?: string;
-        /** MAC address for `wake()` */
+        /** MAC address for `wake()`; overrides the MACs learned from the TV */
         mac?: string;
+        /** learn wired/Wi-Fi MACs from the TV after pairing and cache them in `macFile`, default true */
+        learnMac?: boolean;
+        /** file for the learned MACs, default `<keyFile>.mac` */
+        macFile?: string;
         /** options for the underlying `websocket` client, merged over the defaults */
         wsconfig?: Record<string, any>;
     }
@@ -80,6 +84,7 @@ declare namespace LGTV {
         error: (err: Error) => void;
         message: (raw: any) => void;
         certificate: (info: {fingerprint: string; stored: boolean}) => void;
+        mac: (macs: {wired?: string; wifi?: string}) => void;
     }
 }
 
@@ -92,6 +97,11 @@ declare class LGTV extends EventEmitter {
     readonly connected: boolean;
     readonly keyFile: string | undefined;
     readonly certFile: string;
+    readonly macFile: string;
+    /** MACs learned from the TV */
+    readonly macs: {wired?: string; wifi?: string};
+    /** MAC `wake()` will use first: the `mac` option, else the learned wired, else Wi-Fi MAC */
+    readonly mac: string | undefined;
     clientKey: string | undefined;
     wsconfig: Record<string, any>;
 
@@ -117,9 +127,10 @@ declare class LGTV extends EventEmitter {
     getPowerState(cb: LGTV.Callback<LGTV.PowerStateResult>): void;
     subscribePowerState(cb: LGTV.Callback<LGTV.PowerStateResult>): string | undefined;
 
-    wake(mac?: string, options?: LGTV.WakeOptions): Promise<void>;
+    /** without `mac`: the `mac` option, or every MAC learned from the TV */
+    wake(mac?: string | string[], options?: LGTV.WakeOptions): Promise<void>;
     wake(options: LGTV.WakeOptions): Promise<void>;
-    wake(mac: string | undefined, options: LGTV.WakeOptions, cb: (err?: Error | null) => void): void;
+    wake(mac: string | string[] | undefined, options: LGTV.WakeOptions, cb: (err?: Error | null) => void): void;
 
     connect(url?: string): void;
     register(): void;
@@ -131,8 +142,8 @@ declare class LGTV extends EventEmitter {
     off<E extends keyof LGTV.Events>(event: E, listener: LGTV.Events[E]): this;
 
     /** send a Wake-on-LAN magic packet */
-    static wake(mac: string, options?: LGTV.WakeOptions): Promise<void>;
-    static wake(mac: string, options: LGTV.WakeOptions, cb: (err?: Error | null) => void): void;
+    static wake(mac: string | string[], options?: LGTV.WakeOptions): Promise<void>;
+    static wake(mac: string | string[], options: LGTV.WakeOptions, cb: (err?: Error | null) => void): void;
     static readonly LG_ISSUER_FINGERPRINTS: string[];
     static readonly POWER_STATES: Record<string, LGTV.PowerState>;
 }

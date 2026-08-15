@@ -1,6 +1,6 @@
 {
     "name": "lgtv2",
-    "version": "1.8.0",
+    "version": "1.9.0",
     "description": "Simple module to remote control LG WebOS smart TVs",
     "main": "index.js",
     "types": "index.d.ts",

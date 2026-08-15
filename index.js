@@ -94,6 +94,26 @@ function wake(mac, options, cb) {
         cb = options;
         options = {};
     }
+    if (Array.isArray(mac)) {
+        // several candidate MACs (e.g. wired + wifi): wake all of them
+        const macs = [
+            ...new Set(
+                mac.map((m) =>
+                    String(m)
+                        .replace(/[^0-9a-f]/gi, '')
+                        .toLowerCase(),
+                ),
+            ),
+        ];
+        const all = macs.length
+            ? Promise.all(macs.map((m) => wake(m, options))).then(() => undefined)
+            : Promise.reject(new Error('no MAC address known - pass one or connect to the TV once'));
+        if (typeof cb === 'function') {
+            all.then(() => cb(null), cb);
+            return undefined;
+        }
+        return all;
+    }
     const opts = Object.assign({address: '255.255.255.255', port: 9, count: 3, interval: 100}, options);
     const promise = new Promise((resolve, reject) => {
         let packet;
@@ -336,6 +356,63 @@ const LGTV = function (config) {
             : path.join(defaultKeyDir(), 'certfile-' + hostnameFromUrl(config.url));
     }
     this.certFile = config.certFile;
+
+    // MAC addresses learned from the TV (com.webos.service.connectionmanager/getinfo) for wake()
+    config.learnMac = config.learnMac !== false;
+    if (!config.macFile) {
+        config.macFile = config.keyFile
+            ? config.keyFile + '.mac'
+            : path.join(defaultKeyDir(), 'macfile-' + hostnameFromUrl(config.url));
+    }
+    this.macFile = config.macFile;
+    let macs = {};
+    try {
+        macs = JSON.parse(fs.readFileSync(config.macFile, 'utf8')) || {};
+    } catch {
+        // nothing learned yet
+    }
+    const macCandidates = () => {
+        const list = config.mac ? [config.mac] : [macs.wired, macs.wifi].filter(Boolean);
+        return list;
+    };
+    Object.defineProperty(this, 'macs', {
+        enumerable: true,
+        get() {
+            return Object.assign({}, macs);
+        },
+    });
+    Object.defineProperty(this, 'mac', {
+        enumerable: true,
+        get() {
+            return macCandidates()[0];
+        },
+    });
+
+    function learnMacs() {
+        that.request('ssap://com.webos.service.connectionmanager/getinfo', (err, res) => {
+            if (err || !res) {
+                return;
+            }
+            const learned = {
+                wired: res.wiredInfo && res.wiredInfo.macAddress,
+                wifi: res.wifiInfo && res.wifiInfo.macAddress,
+            };
+            if (!learned.wired && !learned.wifi) {
+                return;
+            }
+            const changed = learned.wired !== macs.wired || learned.wifi !== macs.wifi;
+            macs = learned;
+            if (changed) {
+                try {
+                    fs.mkdirSync(path.dirname(config.macFile), {recursive: true});
+                    fs.writeFileSync(config.macFile, JSON.stringify(macs) + '\n');
+                } catch (err) {
+                    that.emit('error', err);
+                }
+            }
+            that.emit('mac', Object.assign({}, macs));
+        });
+    }
 
     that.saveKey =
         config.saveKey ||
@@ -582,6 +659,9 @@ const LGTV = function (config) {
                 isPaired = true;
                 that.connection = true;
                 that.emit('connect');
+                if (config.learnMac) {
+                    learnMacs();
+                }
                 if (res['client-key'] !== that.clientKey) {
                     that.saveKey(res['client-key'], (err) => {
                         if (err) {
@@ -817,7 +897,7 @@ const LGTV = function (config) {
             options = mac;
             mac = undefined;
         }
-        return wake(mac || config.mac, options, cb);
+        return wake(mac || macCandidates(), options, cb);
     };
 
     /**

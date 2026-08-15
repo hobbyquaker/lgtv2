@@ -118,6 +118,19 @@ function createMockTv(options = {}) {
                 case 'ssap://system/turnOff':
                     send(ws, {id, type: 'response', payload: {returnValue: true}});
                     break;
+                case 'ssap://com.webos.service.connectionmanager/getinfo':
+                    send(ws, {
+                        id,
+                        type: 'response',
+                        payload: {
+                            returnValue: true,
+                            subscribed: false,
+                            wiredInfo: {macAddress: opts.wiredMac || '74:E6:B8:44:0A:7E'},
+                            wifiInfo: {macAddress: opts.wifiMac || '20:28:BC:1B:5F:46'},
+                            p2pInfo: {macAddress: '22:28:BC:1B:5F:46'},
+                        },
+                    });
+                    break;
                 case 'ssap://com.webos.service.tvpower/power/getPowerState':
                     send(ws, {
                         id,

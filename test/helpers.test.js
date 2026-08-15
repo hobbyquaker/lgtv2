@@ -240,6 +240,81 @@ test('verifyCert: tofu stores the fingerprint on first contact and rejects a cha
     await tv2.close();
 });
 
+test('learns wired/wifi MACs after pairing, caches them, wake() without mac uses them', async () => {
+    const received = [];
+    const sock = dgram.createSocket('udp4');
+    await new Promise((r) => sock.bind(0, '127.0.0.1', r));
+    sock.on('message', (msg) => received.push(msg.subarray(6, 12).toString('hex')));
+    const {port} = sock.address();
+
+    const tv = await createMockTv({wiredMac: 'AA:AA:AA:AA:AA:01', wifiMac: 'bb-bb-bb-bb-bb-02'});
+    const keyFile = path.join(tmpDir(), 'key');
+    const lgtv = new LGTV({url: tv.url, keyFile, reconnect: false});
+    lgtv.on('error', () => {});
+    const macEvent = once(lgtv, 'mac');
+    await once(lgtv, 'connect');
+    const [macs] = await macEvent;
+    assert.deepEqual(macs, {wired: 'AA:AA:AA:AA:AA:01', wifi: 'bb-bb-bb-bb-bb-02'});
+    assert.deepEqual(lgtv.macs, macs);
+    assert.equal(lgtv.mac, 'AA:AA:AA:AA:AA:01');
+    assert.equal(lgtv.macFile, keyFile + '.mac');
+    assert.deepEqual(JSON.parse(fs.readFileSync(keyFile + '.mac', 'utf8')), macs);
+
+    await lgtv.wake({address: '127.0.0.1', port, count: 1});
+    await new Promise((r) => setTimeout(r, 50));
+    assert.deepEqual(received.sort(), ['aaaaaaaaaa01', 'bbbbbbbbbb02']);
+    await lgtv.disconnect();
+    await tv.close();
+
+    // a new instance uses the cached file without connecting; explicit mac option wins
+    const offline = new LGTV({url: 'ws://127.0.0.1:9', keyFile, reconnect: false, handshakeTimeout: 0});
+    offline.disconnect();
+    assert.equal(offline.mac, 'AA:AA:AA:AA:AA:01');
+    received.length = 0;
+    await offline.wake({address: '127.0.0.1', port, count: 1});
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(received.length, 2);
+
+    const pinned = new LGTV({
+        url: 'ws://127.0.0.1:9',
+        keyFile,
+        mac: 'cc:cc:cc:cc:cc:03',
+        reconnect: false,
+        handshakeTimeout: 0,
+    });
+    pinned.disconnect();
+    assert.equal(pinned.mac, 'cc:cc:cc:cc:cc:03');
+    received.length = 0;
+    await pinned.wake({address: '127.0.0.1', port, count: 1});
+    await new Promise((r) => setTimeout(r, 50));
+    assert.deepEqual(received, ['cccccccccc03']);
+
+    // nothing known at all
+    const unknown = new LGTV({
+        url: 'ws://127.0.0.1:9',
+        keyFile: path.join(tmpDir(), 'k'),
+        reconnect: false,
+        handshakeTimeout: 0,
+    });
+    unknown.disconnect();
+    assert.equal(unknown.mac, undefined);
+    await assert.rejects(unknown.wake({address: '127.0.0.1', port}), /no MAC address known/);
+    sock.close();
+});
+
+test('learnMac: false leaves the MAC file alone', async () => {
+    const tv = await createMockTv();
+    const keyFile = path.join(tmpDir(), 'key');
+    const lgtv = new LGTV({url: tv.url, keyFile, reconnect: false, learnMac: false});
+    lgtv.on('error', () => {});
+    await once(lgtv, 'connect');
+    await new Promise((r) => setTimeout(r, 100));
+    assert.equal(fs.existsSync(keyFile + '.mac'), false);
+    assert.ok(!tv.received.some((m) => m.uri === 'ssap://com.webos.service.connectionmanager/getinfo'));
+    await lgtv.disconnect();
+    await tv.close();
+});
+
 test('verifyCert is ignored on plain ws:// connections', async () => {
     const tv = await createMockTv();
     const lgtv = new LGTV({url: tv.url, keyFile: path.join(tmpDir(), 'key'), reconnect: false, verifyCert: 'lg'});
