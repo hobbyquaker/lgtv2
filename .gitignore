@@ -1,4 +1,5 @@
+node_modules
 .idea
 .grunt
-node_modules
 .DS_Store
+lgtv2-patches/
