@@ -8,8 +8,9 @@
   (`address`, `port`, `count`, `interval` options); `mac` option on the constructor.
 - `getPowerState()` / `subscribePowerState()`: `tvpower/power/getPowerState` mapped to
   `on | standby | screen_off | off | unknown` plus the raw payload.
-- `verifyCert` option for `wss` connections: `'lg'` pins LG's "LGE SSG Intermediate CA"
-  by SHA-256 fingerprint, `'tofu'` pins the first seen certificate in `certFile`
+- `verifyCert` option for `wss` connections: `'lg'` pins LG's fleet-wide TV certificate
+  "LGE TV SSG" and its issuer "LGE SSG Intermediate CA" by SHA-256 fingerprint
+  (either matches), `'tofu'` pins the first seen certificate in `certFile`
   (`<keyFile>.cert`), or pass your own fingerprint(s). Failures emit `error` with
   `code: 'ECERT'` and never register with the TV. New `certificate` event.
 - `LGTV2_KEY_DIR` environment variable overrides the key/cert directory.

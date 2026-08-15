@@ -309,8 +309,32 @@ passed.
   inspected after the TLS handshake via `getPeerCertificate(true)` (Node skips
   `checkServerIdentity` when chain verification already failed), so `'lg'`
   pins the intermediate's SHA-256 fingerprint instead of shipping a PEM.
-  Still to do: confirm on more TVs that the intermediate is universal;
-  collect fingerprints via an issue template.
+  **Research (2026-08-21, 17 sources, 25 claims adversarially verified)**:
+  - The **leaf itself is fleet-wide static**: `CN=LGE TV SSG`, serial `0x2001`,
+    same RSA-2048 key (SKI `59:BF:D3:B7…`), same validity, observed on a 2018
+    EU TV (ours, webOS 6.0), a 2022 US OLED65G2PUA (firmware built Nov 2025)
+    and a 2023 JP OLED55G3PJA (Shodan, Aug 2026). So the private key is shared
+    by every TV — the cert proves "an LG TV", never "my TV".
+  - Leaf SHA-256 `11:C5:B1:C5:90:77:50:AB:B9:DA:2A:66:65:CC:CE:2B:B2:88:A5:83:F4:5A:33:39:E7:1F:87:BF:2F:80:85:52`
+    (measured here; serial/key match the Shodan records). Root
+    `CN=LG webOS TV Root CA` (serial `0x1007` on the intermediate's AKI) is
+    never sent and not published; LG's developer TLS page lists no LG-owned CA.
+  - No rotation seen 2018→2026, none announced; expiry 2034-08-15.
+  - No other client verifies: aiowebostv/Home Assistant (`ssl=False`),
+    bscpylgtv (`CERT_NONE`), PyWebOSTV, homebridge-webos-tv, Homey LG WebOS
+    Plus, node-red-contrib-lgtv #56 — all disable verification; none pins or
+    publishes fingerprints.
+  - Caveat: LGTVCompanion v4.0.1 (May 2023) rewrote its client "to resolve
+    SSL handshake issues on webOS23 devices" and a 2026 report shows fw
+    43.00.92 rejecting pairing with "blacklisted certificate detected" (an
+    app-level pairing cert, not the server chain) — LG does change
+    TLS-adjacent behaviour, so pinning needs an escape hatch.
+
+  **Decision**: `verifyCert: 'lg'` accepts **leaf or intermediate** (both
+  shipped in `LG_ISSUER_FINGERPRINTS`), stays **opt-in** in 1.x. Revisit a
+  default of `'lg'` for 2.0 only with a documented fallback (`error` carries
+  `chain` fingerprints so users can pass their own) and an issue template
+  collecting fingerprints from other models.
 - **OQ-31 — Learn the MAC for `wake()` automatically**: once paired, the
   wired/Wi-Fi MACs are available from
   `com.webos.service.connectionmanager/getinfo` (and `device_id` of

@@ -94,7 +94,7 @@ More in [examples/](examples/).
 - `urls` (property) - the list of URLs that will be tried.
 - `rejectUnauthorized` - verify the TV's TLS certificate against public CAs. Default `false`: the TV uses a certificate issued by LG's private CA that is not verifiable against public roots.
 - `verifyCert` - additional certificate check for `wss` connections, default `false`:
-    - `'lg'` - the presented chain must contain LG's "LGE SSG Intermediate CA" (pinned by SHA-256 fingerprint, see `LGTV.LG_ISSUER_FINGERPRINTS`). Protects against a rogue device answering as your TV.
+    - `'lg'` - the presented chain must contain LG's static TV certificate "LGE TV SSG" or its issuer "LGE SSG Intermediate CA" (pinned by SHA-256 fingerprint, see `LGTV.LG_ISSUER_FINGERPRINTS`). LG ships the same certificate and key on every webOS TV (2018–2025 models, all regions checked), so this tells you "it is an LG TV", not "it is _my_ TV". Protects against a rogue device answering as your TV.
     - `'tofu'` - trust on first use: the first certificate seen is pinned in `certFile`; a different one later is rejected (`error` with `code: 'ECERT'`, delete the file to re-trust).
     - a SHA-256 fingerprint (`'AB:CD:…'` or `'sha256/abcd…'`) or an array of them - accepted if any certificate of the chain matches.
 - `certFile` - where the `tofu` fingerprint is stored, default `<keyFile>.cert`.

@@ -28,12 +28,18 @@ const PORT_SECURE = 3001;
 const PORT_INSECURE = 3000;
 
 /**
- * SHA-256 fingerprints of LG's "LGE SSG Intermediate CA" (issued by "webOS TV Root CA",
- * valid 2018-03-12 .. 2034-08-15) that signs the certificates of webOS TVs.
- * Used by `verifyCert: 'lg'`.
+ * SHA-256 fingerprints of the certificates LG webOS TVs present on port 3001, used by
+ * `verifyCert: 'lg'` (a chain matching any of them is accepted):
+ *  - leaf "LGE TV SSG" (serial 0x2001) - one static certificate and key on every TV
+ *    (seen on 2018-2023 models, EU/US/JP, firmware up to late 2025),
+ *  - its issuer "LGE SSG Intermediate CA" (serial 0x1007, issued by "LG webOS TV Root CA").
+ * Both valid 2018-03-12 .. 2034-08-15.
  */
 const LG_ISSUER_FINGERPRINTS = [
+    // LGE SSG Intermediate CA
     'E2:BD:64:64:D3:F5:1C:1B:95:B7:69:7D:9D:67:73:C3:3D:94:12:EB:A0:29:9C:56:8C:34:93:7D:3F:E6:8A:A0',
+    // LGE TV SSG (leaf)
+    '11:C5:B1:C5:90:77:50:AB:B9:DA:2A:66:65:CC:CE:2B:B2:88:A5:83:F4:5A:33:39:E7:1F:87:BF:2F:80:85:52',
 ];
 
 const POWER_STATES = {
