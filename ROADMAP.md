@@ -254,11 +254,10 @@ passed.
 
 ## 4. Open questions
 
-- **OQ-24 — `changed` array compatibility**: keep synthesizing `changed` on
-  the first `getVolume` response (1.x behaviour some consumers rely on) or
-  drop it in 2.0 and document `audio/getStatus`? Leaning: keep in 1.x and
-  normalize `volumeStatus` into the same shape; remove in 2.0 with a
-  CHANGELOG note.
+- **OQ-24 — `changed` array compatibility** — **decided: keep** (2.0). The
+  normalization (`volumeStatus` → `volume`/`muted`/`changed`, computed from
+  the previous state per subscription) is cheap, works on all firmware seen,
+  and lgtv2mqtt reads `res.changed`; removing it would only create breakage.
 - **OQ-25 — ws/wss auto-fallback** (shared with lgtv2mqtt OQ-20) — **decided:
   fallback in the lib** (1.7.0). `wss:3001` first, `ws:3000` second, the
   working port is kept for reconnects so old TVs pay the extra attempt only
@@ -428,9 +427,24 @@ passed.
 
 ### 2.0.0 — modernization
 
-- [ ] ESM + `exports`, `engines >= 20.19` (L-8); `ws` transport (L-7).
-- [ ] Secure default `wss://<host>:3001` (L-2); `host`/`port`/`secure` config.
-- [ ] Remove the `changed` synthesis (OQ-24); `connected` getter.
-- [ ] PIN pairing if OQ-27 is resolved.
-- [ ] Migration notes in CHANGELOG; coordinated releases of lgtv2mqtt 2.0 and
-      node-red-contrib-lgtv.
+- [x] ESM + `exports`, `engines ^20.19 || ^22.12 || >=24` (L-8);
+      `require('lgtv2')` keeps returning the constructor via the
+      `'module.exports'` named export, so CJS dependents (lgtv2mqtt,
+      homebridge, ioBroker) need no code change.
+- [x] `ws` transport (L-7): native `handshakeTimeout`, ping/pong keepalive
+      in the lib, no native add-ons; `wsconfig` mapped for compatibility,
+      `message` event now a string, `close` event `{code, reason}`.
+- [x] Connection behaviour deliberately **unchanged**: wss:3001 first, ws:3000
+      fallback, working port remembered (decided 2026-08-21; the earlier
+      "secure default" item is dropped).
+- [x] `changed` synthesis **kept** (OQ-24 → keep; lgtv2mqtt reads it).
+- [x] Dependencies audited: runtime `ws ^8.21` only; dev deps to current majors
+      (eslint 10, @eslint/js 10, globals 17, prettier 3.9, @types/node 24,
+      @types/ws); typescript stays ^5.9 (7.x is the Go-based compiler, not
+      needed for a `tsc --noEmit` check). `npm audit`: 0.
+- [x] Verified live on the webOS 6 TV: wss via `ws`, `verifyCert: 'lg'`, MAC
+      learning, pointer socket, keepalive cycle.
+- [x] Migration notes in README ("Upgrading to 2.0") and CHANGELOG.
+- [ ] Release 2.0.0 (tag → release workflow); then bump lgtv2mqtt and
+      node-red-contrib-lgtv to `^2.0` (both CJS, expected drop-in).
+- [ ] PIN pairing if OQ-27 is resolved (2.x).

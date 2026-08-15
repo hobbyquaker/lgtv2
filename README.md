@@ -20,7 +20,8 @@ Simple Node.js module to remote control LG WebOS smart TVs.
 
 `npm install lgtv2`
 
-Requires Node.js >= 20.
+Requires Node.js 20.19+, 22.12+ or 24+. The package is an ES module; `import LGTV from 'lgtv2'` and
+`const LGTV = require('lgtv2')` both work (see [Upgrading to 2.0](#upgrading-to-20)).
 
 ## TV configuration
 
@@ -41,7 +42,7 @@ Requires Node.js >= 20.
 Subscribe to volume and mute changes and output to console:
 
 ```javascript
-const LGTV = require('lgtv2');
+import LGTV from 'lgtv2';
 
 const lgtv = new LGTV({host: '192.168.1.20'});
 
@@ -62,7 +63,7 @@ lgtv.on('connect', () => {
 Turn TV off (promise style):
 
 ```javascript
-const LGTV = require('lgtv2');
+import LGTV from 'lgtv2';
 
 const lgtv = new LGTV({host: '192.168.1.20'});
 lgtv.on('error', (err) => console.log(err));
@@ -105,7 +106,9 @@ More in [examples/](examples/).
 - `keyFile` - path of the file the client key is stored in. Default: Linux `~/.lgtv2/keyfile-<host>`, macOS `~/Library/Preferences/lgtv2/keyfile-<host>`, Windows `%APPDATA%\lgtv2\keyfile-<host>`; the environment variable `LGTV2_KEY_DIR` overrides the directory (handy for Docker volumes). The directory is created when the key is first saved.
 - `saveKey` - `function (key, callback)` to override how the key is stored.
 - `clientKey` - supply the key directly (use together with a custom `saveKey`).
-- `wsconfig` - options for the underlying [websocket](https://github.com/theturtle32/WebSocket-Node/blob/master/docs/WebSocketClient.md) client; merged over the defaults (`keepalive: true, keepaliveInterval: 10000, dropConnectionOnKeepaliveTimeout: true, keepaliveGracePeriod: 5000`). `wsconfig.tlsOptions` is merged over `{rejectUnauthorized}`.
+- `keepalive` (`true`), `keepaliveInterval` (10000 ms), `keepaliveGracePeriod` (5000 ms) - ping the TV regularly and drop the connection when a pong does not arrive in time (a TV going to standby does not always close the socket); the normal reconnect then takes over.
+- `wsOptions` - extra options for the underlying [ws](https://github.com/websockets/ws/blob/master/doc/ws.md#new-websocketaddress-protocols-options) client, e.g. `ca`, `cert`, `headers`, `localAddress`; merged over `{rejectUnauthorized}`.
+- `wsconfig` - the 1.x option is still understood (`keepalive*` keys and `tlsOptions` are mapped), prefer the options above.
 
 ### properties
 
@@ -185,16 +188,36 @@ Closes the connection to the TV and stops auto-reconnection. Returns a promise w
 - `connecting` (url) - trying to connect to the TV
 - `prompt` - the TV shows the pairing prompt; accept it on the TV
 - `connect` - connection established and paired
-- `close` - connection closed
 - `error` (err) - websocket/pairing/TV errors. Subsequent equal connection errors are only emitted once (so your log isn't flooded with `EHOSTUNREACH` while the TV is off)
-- `message` (raw) - every raw websocket message, for debugging
+- `message` (text) - every raw frame received from the TV as a string, for debugging
+- `close` ({code, reason}) - connection closed
 - `certificate` ({fingerprint, stored}) - `verifyCert: 'tofu'` pinned a certificate for the first time
 - `mac` ({wired, wifi}) - MAC addresses learned from the TV after pairing
 
 ### TypeScript
 
-Type declarations ship with the package (`index.d.ts`); `import LGTV = require('lgtv2')` or
-`import LGTV from 'lgtv2'` with `esModuleInterop`.
+Type declarations ship with the package (`index.d.ts`): `import LGTV from 'lgtv2'` (default export),
+plus named exports `LGTV`, `wake`, `LG_ISSUER_FINGERPRINTS`, `POWER_STATES`.
+
+## Upgrading to 2.0
+
+2.0 is a modernization release; the API is unchanged except for the points below.
+
+- **ES module.** `import LGTV from 'lgtv2'` is the native form. `const LGTV = require('lgtv2')`
+  keeps working unchanged on Node 20.19+ / 22.12+ / 24 (`require(esm)`) - no `.default`, and
+  calling it without `new` still works. Node < 20.19 is no longer supported.
+- **Transport is [ws](https://github.com/websockets/ws) instead of `websocket`.** No native
+  add-ons any more (no `bufferutil`/`utf-8-validate` build on ARM/Docker). Consequences:
+    - the `message` event now delivers the raw frame as a **string** (was the `websocket`
+      message object with `utf8Data`);
+    - the `close` event payload is `{code, reason}`;
+    - `wsconfig` is replaced by `keepalive`/`keepaliveInterval`/`keepaliveGracePeriod` and
+      `wsOptions` (passed to `ws`). A 1.x `wsconfig` (including `tlsOptions`) is still mapped, so
+      existing code keeps working; `wsconfig.dropConnectionOnKeepaliveTimeout` has no equivalent
+      (always on).
+- Connection behaviour is unchanged: `{host}` tries `wss://host:3001` first and falls back to
+  `ws://host:3000`; `verifyCert` is still opt-in; `audio/getVolume` payloads are still normalized
+  to `volume`/`muted`/`changed`.
 
 ## Commands
 

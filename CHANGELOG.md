@@ -1,5 +1,27 @@
 # Changelog
 
+## 2.0.0 (unreleased)
+
+Modernization release. Behaviour towards the TV is unchanged (wss:3001 first, ws:3000 fallback,
+opt-in certificate verification, normalized volume payloads). See "Upgrading to 2.0" in the README.
+
+### Changed (breaking)
+
+- ES module (`"type": "module"`, `exports`). `import LGTV from 'lgtv2'`; `require('lgtv2')`
+  still returns the constructor via `require(esm)`. Requires Node.js ^20.19 || ^22.12 || >=24.
+- Transport switched from `websocket` (WebSocket-Node, unmaintained, native add-ons) to `ws`
+  8.x: no native build on install, native handshake timeout, keepalive via ping/pong.
+    - `message` event delivers the raw frame as a string.
+    - `close` event payload is `{code, reason}`.
+    - `wsconfig` → `keepalive`, `keepaliveInterval`, `keepaliveGracePeriod` and `wsOptions`
+      (passed to `ws`). A 1.x `wsconfig` incl. `tlsOptions` is still mapped.
+- Dev tooling: eslint 10, globals 17, prettier 3.9, @types/node 24; CI on node 20/22/24.
+
+### Added
+
+- Named exports `LGTV`, `wake`, `LG_ISSUER_FINGERPRINTS`, `POWER_STATES`; `wsOptions` and
+  `keepalive` properties on the instance.
+
 ## 1.9.0 (2026-08-21)
 
 ### Added
