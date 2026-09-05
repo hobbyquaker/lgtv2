@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.0.2 (2026-09-05)
+
+### Fixed
+
+- webOS 26 fallback manifest: request `CONTROL_INPUT_TEXT` and `CONTROL_MOUSE_AND_KEYBOARD` too,
+  so the pointer/button socket (`getPointerInputSocket`) no longer fails with
+  `401 insufficient permissions` after unsigned pairing (#52, thanks @Voodoo2man).
+
 ## 2.0.1 (2026-09-05)
 
 ### Fixed
