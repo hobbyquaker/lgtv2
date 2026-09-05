@@ -12,7 +12,7 @@ export function createMockTv(options = {}) {
     const opts = Object.assign(
         {
             acceptKeys: [CLIENT_KEY],
-            // 'accept' | 'prompt-then-accept' | 'reject' | 'silent'
+            // 'accept' | 'prompt-then-accept' | 'reject' | 'webos26' | 'silent'
             pairing: 'prompt-then-accept',
             volumeShape: 'old', // 'old' (volume/muted/changed) | 'new' (volumeStatus)
         },
@@ -77,6 +77,14 @@ export function createMockTv(options = {}) {
                 }
                 if (opts.pairing === 'reject') {
                     send(ws, {id, type: 'error', error: '403 cancelled'});
+                    return;
+                }
+                if (opts.pairing === 'webos26') {
+                    if (payload?.manifest?.signed) {
+                        send(ws, {id, type: 'error', error: '403 Pairing rejected: blacklisted certificate detected'});
+                    } else {
+                        send(ws, {id, type: 'registered', payload: {'client-key': CLIENT_KEY}});
+                    }
                     return;
                 }
                 if (opts.pairing === 'accept') {
