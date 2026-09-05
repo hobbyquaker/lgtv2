@@ -20,6 +20,7 @@ function unsignedPairing() {
     const pairing = JSON.parse(JSON.stringify(pairingTemplate));
     delete pairing.manifest.signed;
     pairing.manifest.appVersion = '1.0';
+    pairing.manifest.permissions.push('CONTROL_INPUT_TEXT', 'CONTROL_MOUSE_AND_KEYBOARD');
     return pairing;
 }
 

@@ -99,6 +99,8 @@ test('retries registration with an unsigned manifest for webOS 26', async () => 
     assert.equal(registrations.length, 2);
     assert.ok(registrations[0].payload.manifest.signed);
     assert.equal(registrations[1].payload.manifest.signed, undefined);
+    assert.ok(registrations[1].payload.manifest.permissions.includes('CONTROL_INPUT_TEXT'));
+    assert.ok(registrations[1].payload.manifest.permissions.includes('CONTROL_MOUSE_AND_KEYBOARD'));
     await lgtv.disconnect();
     await tv.close();
 });
