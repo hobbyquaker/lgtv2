@@ -89,6 +89,20 @@ test('pairing rejection emits error, not prompt', async () => {
     await tv.close();
 });
 
+test('retries registration with an unsigned manifest for webOS 26', async () => {
+    const tv = await createMockTv({pairing: 'webos26'});
+    const keyFile = tmpKeyFile();
+    const lgtv = new LGTV({url: tv.url, keyFile, reconnect: false});
+    lgtv.on('error', () => {});
+    await once(lgtv, 'connect');
+    const registrations = tv.received.filter((message) => message.type === 'register');
+    assert.equal(registrations.length, 2);
+    assert.ok(registrations[0].payload.manifest.signed);
+    assert.equal(registrations[1].payload.manifest.signed, undefined);
+    await lgtv.disconnect();
+    await tv.close();
+});
+
 test('request: callback and promise forms; message event carries the raw frame', async () => {
     const tv = await createMockTv();
     const lgtv = await connectedTv(tv);

@@ -16,6 +16,13 @@ import WebSocket from 'ws';
 
 const pairingTemplate = createRequire(import.meta.url)('./pairing.json');
 
+function unsignedPairing() {
+    const pairing = JSON.parse(JSON.stringify(pairingTemplate));
+    delete pairing.manifest.signed;
+    pairing.manifest.appVersion = '1.0';
+    return pairing;
+}
+
 const DEFAULT_KEEPALIVE = {
     keepalive: true,
     keepaliveInterval: 10000,
@@ -664,35 +671,42 @@ const LGTV = function (config) {
     }
 
     this.register = function () {
-        const pairing = Object.assign({}, pairingTemplate);
-        if (that.clientKey) {
-            pairing['client-key'] = that.clientKey;
-        }
+        const register = (pairing, fallback) => {
+            if (that.clientKey) {
+                pairing['client-key'] = that.clientKey;
+            }
 
-        that.send('register', undefined, pairing, (err, res) => {
-            if (err) {
-                // e.g. "403 cancelled" when the user declines on the TV
-                that.emit('error', err);
-                return;
-            }
-            if (res && typeof res['client-key'] === 'string' && res['client-key'] !== '') {
-                isPaired = true;
-                that.connection = true;
-                that.emit('connect');
-                if (config.learnMac) {
-                    learnMacs();
+            that.send('register', undefined, pairing, (err, res) => {
+                if (err) {
+                    if (fallback && /403.*blacklisted certificate detected/i.test(err.message || String(err))) {
+                        register(unsignedPairing(), false);
+                        return;
+                    }
+                    // e.g. "403 cancelled" when the user declines on the TV
+                    that.emit('error', err);
+                    return;
                 }
-                if (res['client-key'] !== that.clientKey) {
-                    that.saveKey(res['client-key'], (err) => {
-                        if (err) {
-                            that.emit('error', err);
-                        }
-                    });
+                if (res && typeof res['client-key'] === 'string' && res['client-key'] !== '') {
+                    isPaired = true;
+                    that.connection = true;
+                    that.emit('connect');
+                    if (config.learnMac) {
+                        learnMacs();
+                    }
+                    if (res['client-key'] !== that.clientKey) {
+                        that.saveKey(res['client-key'], (err) => {
+                            if (err) {
+                                that.emit('error', err);
+                            }
+                        });
+                    }
+                } else {
+                    that.emit('prompt');
                 }
-            } else {
-                that.emit('prompt');
-            }
-        });
+            });
+        };
+
+        register(JSON.parse(JSON.stringify(pairingTemplate)), true);
     };
 
     this.request = function (uri, payload, cb) {
