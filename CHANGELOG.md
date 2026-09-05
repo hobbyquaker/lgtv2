@@ -1,6 +1,15 @@
 # Changelog
 
-## 2.0.0 (unreleased)
+## 2.0.1 (2026-09-05)
+
+### Fixed
+
+- Pairing on webOS 26, which rejects the signed `com.lge.test` manifest with
+  `403 Pairing rejected: blacklisted certificate detected`: registration is retried with an
+  unsigned manifest on that error. Older TVs still get the unchanged signed manifest first
+  (#51, thanks @Voodoo2man).
+
+## 2.0.0 (2026-08-15)
 
 Modernization release. Behaviour towards the TV is unchanged (wss:3001 first, ws:3000 fallback,
 opt-in certificate verification, normalized volume payloads). See "Upgrading to 2.0" in the README.
@@ -21,13 +30,6 @@ opt-in certificate verification, normalized volume payloads). See "Upgrading to 
 
 - Named exports `LGTV`, `wake`, `LG_ISSUER_FINGERPRINTS`, `POWER_STATES`; `wsOptions` and
   `keepalive` properties on the instance.
-
-### Fixed
-
-- Pairing on webOS 26, which rejects the signed `com.lge.test` manifest with
-  `403 Pairing rejected: blacklisted certificate detected`: registration is retried with an
-  unsigned manifest on that error. Older TVs still get the unchanged signed manifest first
-  (#51, thanks @Voodoo2man).
 
 ## 1.9.0 (2026-08-21)
 
