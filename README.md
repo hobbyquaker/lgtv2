@@ -33,6 +33,12 @@ Requires Node.js 20.19+, 22.12+ or 24+. The package is an ES module; `import LGT
 - On first connection the TV shows a connection request ("LG Connect Apps" / "Mobile TV On"
   on older models). Accept it; the resulting client key is stored in the key file (see
   `keyFile` below) and reused on subsequent connections.
+- **Pairing once, for short scripts**: with just `{host}` the key file does it — the first run
+  prompts, every later run connects without asking. [`examples/command.js`](examples/command.js)
+  sends one command and exits; [`examples/own-key-store.js`](examples/own-key-store.js) keeps the
+  key yourself (a JSON file of your own, an environment variable) with `clientKey` and `saveKey`.
+  Before 2.1.0, a script that exits right after `connect` on a first pairing could exit before the
+  key was saved and get the prompt again; wait a moment before exiting there.
 - To turn the TV **on** over the network you need Wake-on-LAN and the TV setting
   _Settings → General → Mobile TV On / Turn on via Wi-Fi_ (2025+ models:
   _Support → IP control settings → Wake on LAN_). Then `lgtv.wake()` / `LGTV.wake(mac)` turns it on.
@@ -187,7 +193,8 @@ Closes the connection to the TV and stops auto-reconnection. Returns a promise w
 
 - `connecting` (url) - trying to connect to the TV
 - `prompt` - the TV shows the pairing prompt; accept it on the TV
-- `connect` - connection established and paired
+- `connect` - connection established and paired; `clientKey` holds the key from here on, also on a first pairing
+- `key` (key) - the TV handed out a new client key (first pairing, or the TV forgot the old one); emitted before `connect`, while `saveKey` is storing it
 - `error` (err) - websocket/pairing/TV errors. Subsequent equal connection errors are only emitted once (so your log isn't flooded with `EHOSTUNREACH` while the TV is off)
 - `message` (text) - every raw frame received from the TV as a string, for debugging
 - `close` ({code, reason}) - connection closed

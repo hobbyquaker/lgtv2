@@ -56,6 +56,51 @@ test('pairs via prompt, saves the key (creating the directory) and emits connect
     await tv.close();
 });
 
+test('a new key is in clientKey inside connect and emitted as key, also with a custom saveKey', async () => {
+    for (const custom of [false, true]) {
+        const tv = await createMockTv();
+        const saved = [];
+        const extra = custom
+            ? {
+                  saveKey: (key, cb) => {
+                      saved.push(key);
+                      setTimeout(cb, 30);
+                  },
+              }
+            : {};
+        const lgtv = new LGTV(Object.assign({url: tv.url, keyFile: tmpKeyFile(), reconnect: false}, extra));
+        lgtv.on('error', () => {});
+        const events = [];
+        lgtv.on('key', (key) => events.push('key:' + key));
+        let keyInConnect;
+        lgtv.on('connect', () => {
+            events.push('connect');
+            keyInConnect = lgtv.clientKey;
+        });
+        await once(lgtv, 'connect');
+        assert.equal(keyInConnect, CLIENT_KEY, custom ? 'custom saveKey' : 'default saveKey');
+        assert.deepEqual(events, ['key:' + CLIENT_KEY, 'connect']);
+        if (custom) assert.deepEqual(saved, [CLIENT_KEY]); // the save started before connect
+        await lgtv.disconnect();
+        await tv.close();
+    }
+});
+
+test('no key event when the stored key is accepted', async () => {
+    const tv = await createMockTv({pairing: 'reject'});
+    const keyFile = tmpKeyFile();
+    fs.mkdirSync(path.dirname(keyFile), {recursive: true});
+    fs.writeFileSync(keyFile, CLIENT_KEY);
+    const lgtv = new LGTV({url: tv.url, keyFile, reconnect: false});
+    lgtv.on('error', () => {});
+    let keys = 0;
+    lgtv.on('key', () => keys++);
+    await once(lgtv, 'connect');
+    assert.equal(keys, 0);
+    await lgtv.disconnect();
+    await tv.close();
+});
+
 test('reuses a stored key without prompting', async () => {
     const tv = await createMockTv({pairing: 'reject'}); // would reject any prompt
     const keyFile = tmpKeyFile();

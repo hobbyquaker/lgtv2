@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- On a first pairing the new client key is in `clientKey` inside the `connect` listener, and
+  `saveKey` has been called before `connect` fires. Before, `clientKey` still held the old value
+  there (with a custom `saveKey` it was never updated), and a script that exited right after its
+  command could lose the key and get the prompt again on the next run.
+
+### Added
+
+- A `key` event with the new client key, emitted before `connect`.
+- Two examples for short scripts: `examples/command.js` (one command, then exit; the key file
+  makes every run after the first one connect without a prompt) and `examples/own-key-store.js`
+  (keeping the key yourself with `clientKey` and `saveKey`) (#53, thanks @Jibun-no-Kage).
+
 ## 2.0.2 (2026-09-05)
 
 ### Fixed

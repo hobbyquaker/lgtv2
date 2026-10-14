@@ -690,16 +690,22 @@ const LGTV = function (config) {
                 if (res && typeof res['client-key'] === 'string' && res['client-key'] !== '') {
                     isPaired = true;
                     that.connection = true;
-                    that.emit('connect');
-                    if (config.learnMac) {
-                        learnMacs();
-                    }
-                    if (res['client-key'] !== that.clientKey) {
-                        that.saveKey(res['client-key'], (err) => {
+                    // A new key is in place before 'connect' fires, so a connect listener can read it from
+                    // clientKey, and the save has started before a one-shot script sends its command and exits.
+                    // The default saveKey sets clientKey itself; a custom one did not, so it is set here for both.
+                    const key = res['client-key'];
+                    if (key !== that.clientKey) {
+                        that.clientKey = key;
+                        that.emit('key', key);
+                        that.saveKey(key, (err) => {
                             if (err) {
                                 that.emit('error', err);
                             }
                         });
+                    }
+                    that.emit('connect');
+                    if (config.learnMac) {
+                        learnMacs();
                     }
                 } else {
                     that.emit('prompt');
