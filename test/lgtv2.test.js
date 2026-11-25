@@ -270,9 +270,16 @@ test('keepalive: a TV that stops answering pings is dropped and reconnected', as
     const closed = once(lgtv, 'close', 5000);
     const started = Date.now();
     tv.pauseAll();
-    await closed;
+    const [info] = await closed;
     assert.ok(Date.now() - started < 2000, 'dropped by the keepalive, not by a timeout');
+    assert.equal(info.keepaliveTimeout, true, 'the close event says the keepalive dropped it');
     tv.dropAll(); // release the paused server side so the reconnect gets a fresh socket
+    await once(lgtv, 'connect');
+    // a close from the TV side is not a keepalive timeout
+    const closedByTv = once(lgtv, 'close', 5000);
+    tv.dropAll();
+    const [info2] = await closedByTv;
+    assert.equal(info2.keepaliveTimeout, false);
     await once(lgtv, 'connect');
     await lgtv.disconnect();
     await tv.close();

@@ -460,6 +460,7 @@ const LGTV = function (config) {
     let reconnectTimer = null;
     let keepaliveTimer = null;
     let keepaliveGraceTimer = null;
+    let keepaliveDropped = null; // the socket the keepalive terminated, reported on its close event
 
     const specializedSockets = {};
 
@@ -525,6 +526,7 @@ const LGTV = function (config) {
                 keepaliveGraceTimer = setTimeout(() => {
                     keepaliveGraceTimer = null;
                     // no pong in time: the TV went away without closing (standby)
+                    keepaliveDropped = socket;
                     socket.terminate();
                 }, keepalive.keepaliveGracePeriod);
                 keepaliveGraceTimer.unref();
@@ -925,7 +927,10 @@ const LGTV = function (config) {
             stopKeepalive();
             connection = null;
             failPendingRequests('connection closed');
-            that.emit('close', {code, reason: reason ? reason.toString() : ''});
+            // keepaliveTimeout tells "the TV stopped answering" (our side dropped it) from "the TV closed it"
+            const keepaliveTimeout = keepaliveDropped === socket;
+            keepaliveDropped = null;
+            that.emit('close', {code, reason: reason ? reason.toString() : '', keepaliveTimeout});
             that.connection = false;
             scheduleReconnect();
         });

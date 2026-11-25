@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- The `close` event carries `keepaliveTimeout`: `true` when the TV stopped answering the keepalive
+  pings and the connection was dropped on this side, `false` when the TV (or the network) closed it.
+  Both show up as code 1006 otherwise, which made frequent disconnects hard to tell apart
+  (hobbyquaker/node-red-contrib-lgtv#69, reported by @Defplayr - thank you!).
+
 ## 2.1.0 (2026-10-14)
 
 ### Fixed

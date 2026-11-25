@@ -37,7 +37,7 @@ tv.on('error', (err: Error) => console.log(err.message));
 tv.on('certificate', (info) => console.log(info.fingerprint, info.stored));
 tv.on('mac', (macs) => console.log(macs.wired, macs.wifi));
 tv.on('message', (raw: string) => console.log(raw.length));
-tv.on('close', (info) => console.log(info.code, info.reason));
+tv.on('close', (info) => console.log(info.code, info.reason, info.keepaliveTimeout));
 tv.on('connecting', (url: string) => console.log(url));
 
 const urls: string[] = tv.urls;

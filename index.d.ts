@@ -88,7 +88,8 @@ declare namespace LGTV {
         connecting: (url: string) => void;
         prompt: () => void;
         connect: () => void;
-        close: (info: {code: number; reason: string}) => void;
+        /** keepaliveTimeout: true when the keepalive dropped the connection (no pong in time), false when it was closed */
+        close: (info: {code: number; reason: string; keepaliveTimeout: boolean}) => void;
         error: (err: Error) => void;
         /** every raw frame received from the TV, as text */
         message: (raw: string) => void;

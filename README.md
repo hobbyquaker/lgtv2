@@ -197,7 +197,7 @@ Closes the connection to the TV and stops auto-reconnection. Returns a promise w
 - `key` (key) - the TV handed out a new client key (first pairing, or the TV forgot the old one); emitted before `connect`, while `saveKey` is storing it
 - `error` (err) - websocket/pairing/TV errors. Subsequent equal connection errors are only emitted once (so your log isn't flooded with `EHOSTUNREACH` while the TV is off)
 - `message` (text) - every raw frame received from the TV as a string, for debugging
-- `close` ({code, reason}) - connection closed
+- `close` ({code, reason, keepaliveTimeout}) - connection closed; `keepaliveTimeout` is `true` when the TV stopped answering the keepalive pings and the connection was dropped on this side, `false` when the TV (or the network) closed it
 - `certificate` ({fingerprint, stored}) - `verifyCert: 'tofu'` pinned a certificate for the first time
 - `mac` ({wired, wifi}) - MAC addresses learned from the TV after pairing
 
